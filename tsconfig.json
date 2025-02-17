@@ -6,7 +6,8 @@
 			"ES2022"
 		],
 		"sourceMap": true,
-		"rootDir": "src",
+		"outDir": "out",
+		"rootDir": ".",
 		"strict": true,
 		"noImplicitAny": true,
 		"noImplicitThis": true,
@@ -21,6 +22,10 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true
 	},
+	"include": [
+		"src",
+		"test",
+	],
 	"exclude": [
 		"node_modules",
 		".vscode-test"

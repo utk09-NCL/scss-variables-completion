@@ -1,8 +1,8 @@
 {
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
-  "description": "Provides autocompletion for SCSS variables based on a JSON configuration.",
-  "version": "0.0.8",
+  "description": "Provides autocompletion for SCSS variables from a JSON file, with fuzzy matching, multi-root support, and a WebView preview.",
+  "version": "0.1.0",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",
@@ -24,29 +24,10 @@
     "configuration": {
       "title": "SCSS Variables",
       "properties": {
-        "scssVariables.source": {
-          "type": "string",
-          "enum": [
-            "json",
-            "scss"
-          ],
-          "default": "json",
-          "description": "Select the source for SCSS variables: JSON file or SCSS theme files."
-        },
         "scssVariables.path": {
           "type": "string",
           "default": "scssVariables.json",
           "description": "Path to the JSON file containing SCSS variable definitions."
-        },
-        "scssVariables.darkThemePath": {
-          "type": "string",
-          "default": "theme-dark.scss",
-          "description": "Path to the dark theme SCSS file."
-        },
-        "scssVariables.lightThemePath": {
-          "type": "string",
-          "default": "theme-light.scss",
-          "description": "Path to the light theme SCSS file."
         }
       }
     },

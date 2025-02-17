@@ -2,7 +2,7 @@
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion for SCSS variables based on a JSON configuration.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",

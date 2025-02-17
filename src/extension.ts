@@ -17,6 +17,18 @@ const outputChannel = vscode.window.createOutputChannel(
   "SCSS Variables Completion"
 );
 
+// Default JSON content for new file
+const defaultVariablesContent = JSON.stringify(
+  {
+    "color-primary": {
+      value: "#ff0000",
+      description: "Primary color"
+    }
+  },
+  null,
+  2
+);
+
 /**
  * Updates the cached completion items based on the current variables.
  */
@@ -81,8 +93,8 @@ function loadVariables(): void {
           )
           .then((selection) => {
             if (selection === "Yes") {
-              // Create a default empty JSON file.
-              fs.writeFile(fullPath, "{}", "utf8", (writeErr) => {
+              // Create a default JSON file with sample content.
+              fs.writeFile(fullPath, defaultVariablesContent, "utf8", (writeErr) => {
                 if (writeErr) {
                   vscode.window.showErrorMessage(
                     `SCSS Variables Completion: Error creating "${filePath}": ${writeErr.message}`

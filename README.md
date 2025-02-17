@@ -2,36 +2,62 @@
 
 ![SCSS Variables Completion Logo](images/icon.png)
 
-A Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS files. The extension reads variable definitions from a JSON configuration file and provides real-time completion suggestions with documentation.
+SCSS Variables Completion is a Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS files. It supports two modes for sourcing variable definitions: a JSON configuration file or direct parsing of SCSS theme files. Enjoy live filtering with fuzzy matching, sorting, and even preview your variables in a WebView.
 
 ## Features
 
-- Autocompletion for CSS custom properties in .scss and .module.scss files
-- Variable documentation with values and descriptions
-- Live reload when the variables JSON file changes
-- Commands to manually reload and open the variables JSON file
+- Autocompletion: Provides intelligent suggestions for CSS custom properties in .scss and .module.scss files.
+- Advanced Filtering: Multi-keyword search with fuzzy matching; completions are sorted alphabetically.
+- Dual Data Source:
+  - JSON Mode: Read variable definitions from a JSON file with detailed documentation.
+  - SCSS Mode: Parse two SCSS theme files (e.g., theme-dark.scss and theme-light.scss) and merge overlapping variables. Variables that appear in both themes display combined information.
+- Live Reload: Automatically reloads variables when the source file(s) change.
+- Command Palette Enhancements:
+  - Reload Variables: Manually reload the variables.
+  - Open Variables File: Open your variables file for editing.
+  - Preview All Variables: View a detailed table of all loaded variables in a WebView panel.
+- Debug Logging: Detailed debug output available via the "SCSS Variables Completion" output channel.
 
 ## Requirements
 
-- Visual Studio Code version 1.83.0 or higher
-- A JSON file containing your CSS variable definitions
+- Visual Studio Code version 1.83.0 or higher.
+- A JSON file with your CSS variable definitions (for JSON mode) or SCSS theme files (for SCSS mode).
 
 ## Installation
 
-1. Install the extension through VS Code's extension marketplace
-2. Create a `scssVariables.json` file in your workspace root (or configure a custom path)
+1. Install the extension from the VS Code Marketplace.
+2. For JSON mode, create a scssVariables.json file in your workspace root (or configure a custom path).
 
 ## Configuration
 
 This extension contributes the following settings:
 
-- `scssVariables.path`: Path to the JSON file containing SCSS variable definitions (default: "scssVariables.json")
+- Data Source Mode
+  - `scssVariables.source`: Select the source for variable definitions.
+    - `"json"` (default): Read variables from a JSON file.
+    - `"scss"`: Parse variables directly from SCSS theme files.
+- JSON Mode Settings
+  - `scssVariables.path`: Path to the JSON file containing SCSS variable definitions (default: "scssVariables.json").
+- SCSS Mode Settings
+  - `scssVariables.darkThemePath`: Path to the dark theme SCSS file (default: "theme-dark.scss").
+  - `scssVariables.lightThemePath`: Path to the light theme SCSS file (default: "theme-light.scss").
 
-![SCSS Variables Completion Logo](images/set-path-to-scssVariables.png)
+![SCSS Variables Completion Settings](images/set-path-to-scssVariables.png)
 
 ## JSON File Format
 
-Create a JSON file with the following structure:
+When using JSON mode, create a JSON file with the following structure:
+
+```json
+{
+  "variable-name": {
+    "value": "variable-value",
+    "description": "variable-description"
+  }
+}
+```
+
+Example:
 
 ```json
 {
@@ -48,18 +74,36 @@ Create a JSON file with the following structure:
 
 ## Usage
 
-1. In your SCSS files, type `var(--` to trigger autocompletion
-2. Select a variable from the completion list to insert it
-3. Variables can be filtered by typing partial names
-4. Hover over completions to see values and descriptions
+1. In your SCSS files, type var(-- to trigger autocompletion.
+2. As you type, the extension will filter suggestions using fuzzy matching. You can type multiple keywords to narrow down the list.
+3. Hover over a completion item to view its value and description.
+4. If using SCSS mode, overlapping variables from your dark and light theme files will be merged and displayed with combined descriptions.
 
 ## Commands
 
-- SCSS Variables: Reload Variables JSON : Manually reload the variables from the JSON file
-- SCSS Variables: Open Variables JSON : Open the variables JSON file for editing
+Access the following commands via the Command Palette (Ctrl+Shift+P or Cmd+Shift+P):
 
-![SCSS Variables Completion Logo](images/commands.png)
+- SCSS Variables: Reload Variables
+  Manually reload the variables from the configured source.
+- SCSS Variables: Open Variables File
+  Open the JSON or SCSS theme file for editing.
+- SCSS Variables: Preview All Variables
+  Open a WebView panel to preview all loaded variables in a tabular format.
 
-## Extension Settings
+## Debugging
 
-- `scssVariables.path` : Set the path to your variables JSON file relative to the workspace root
+For troubleshooting, check the "SCSS Variables Completion" output channel in VS Code (View > Output, then select the channel) to see detailed logs.
+
+## Local Development and Testing
+
+To test your extension locally:
+
+1. Open your extension folder in VS Code.
+2. Go to the Debug panel by clicking the Run and Debug icon on the Activity Bar (or press Ctrl+Shift+D / Cmd+Shift+D).
+3. Select "Run Extension" from the dropdown in the Debug panel.
+4. Press F5 to open a new Extension Development Host window with your extension loaded.
+5. Test your features (autocomplete, commands, etc.) in the new window.
+
+## License
+
+[MIT](LICENSE)

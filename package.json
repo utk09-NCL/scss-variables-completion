@@ -2,7 +2,7 @@
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion for SCSS variables based on a JSON configuration.",
-  "version": "0.0.6",
+  "version": "0.0.8",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",
@@ -16,28 +16,52 @@
     "onLanguage:scss",
     "onLanguage:module.scss",
     "onCommand:scss-variables-completion.reload",
-    "onCommand:scss-variables-completion.open"
+    "onCommand:scss-variables-completion.open",
+    "onCommand:scss-variables-completion.preview"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
       "title": "SCSS Variables",
       "properties": {
+        "scssVariables.source": {
+          "type": "string",
+          "enum": [
+            "json",
+            "scss"
+          ],
+          "default": "json",
+          "description": "Select the source for SCSS variables: JSON file or SCSS theme files."
+        },
         "scssVariables.path": {
           "type": "string",
           "default": "scssVariables.json",
           "description": "Path to the JSON file containing SCSS variable definitions."
+        },
+        "scssVariables.darkThemePath": {
+          "type": "string",
+          "default": "theme-dark.scss",
+          "description": "Path to the dark theme SCSS file."
+        },
+        "scssVariables.lightThemePath": {
+          "type": "string",
+          "default": "theme-light.scss",
+          "description": "Path to the light theme SCSS file."
         }
       }
     },
     "commands": [
       {
         "command": "scss-variables-completion.reload",
-        "title": "SCSS Variables: Reload Variables JSON"
+        "title": "SCSS Variables: Reload Variables"
       },
       {
         "command": "scss-variables-completion.open",
-        "title": "SCSS Variables: Open Variables JSON"
+        "title": "SCSS Variables: Open Variables File"
+      },
+      {
+        "command": "scss-variables-completion.preview",
+        "title": "SCSS Variables: Preview All Variables"
       }
     ]
   },

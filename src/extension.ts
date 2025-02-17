@@ -13,7 +13,9 @@ let variables: { [key: string]: IScssVariable } = {};
 let cachedCompletionItems: vscode.CompletionItem[] = [];
 
 // Create output channel
-const outputChannel = vscode.window.createOutputChannel("SCSS Variables Completion");
+const outputChannel = vscode.window.createOutputChannel(
+  "SCSS Variables Completion"
+);
 
 /**
  * Updates the cached completion items based on the current variables.
@@ -58,9 +60,9 @@ function loadVariables(): void {
     !vscode.workspace.workspaceFolders ||
     vscode.workspace.workspaceFolders.length === 0
   ) {
-    const message = "SCSS Variables Completion: No workspace folder open.";
-    vscode.window.showErrorMessage(message);
-    outputChannel.appendLine(message);
+    vscode.window.showErrorMessage(
+      "SCSS Variables Completion: No workspace folder open."
+    );
     return;
   }
 
@@ -69,25 +71,57 @@ function loadVariables(): void {
 
   fs.readFile(fullPath, "utf8", (err, data) => {
     if (err) {
-      const message = `SCSS Variables Completion: Error reading "${filePath}": ${err.message}`;
-      vscode.window.showErrorMessage(message);
-      outputChannel.appendLine(message);
-      variables = {};
-      updateCachedCompletions();
+      if (err.code === "ENOENT") {
+        // File not found: prompt user to create one.
+        vscode.window
+          .showWarningMessage(
+            `SCSS Variables Completion: "${filePath}" not found. Please create a ${filePath} file in the root of your project or update the "scssVariables.path" setting. Do you want to create ${filePath} in the root directory?`,
+            "Yes",
+            "No"
+          )
+          .then((selection) => {
+            if (selection === "Yes") {
+              // Create a default empty JSON file.
+              fs.writeFile(fullPath, "{}", "utf8", (writeErr) => {
+                if (writeErr) {
+                  vscode.window.showErrorMessage(
+                    `SCSS Variables Completion: Error creating "${filePath}": ${writeErr.message}`
+                  );
+                  return;
+                }
+                vscode.window.showInformationMessage(
+                  `SCSS Variables Completion: "${filePath}" created successfully. Please update it with your variables.`
+                );
+                // After creating the file, attempt to load variables again.
+                loadVariables();
+              });
+            } else {
+              vscode.window.showErrorMessage(
+                `SCSS Variables Completion: "${filePath}" is required. Please create the file or update your settings.`
+              );
+            }
+          });
+      } else {
+        vscode.window.showErrorMessage(
+          `SCSS Variables Completion: Error reading "${filePath}": ${err.message}`
+        );
+        variables = {};
+        updateCachedCompletions();
+      }
       return;
     }
     try {
       const json = JSON.parse(data);
       variables = json;
       updateCachedCompletions();
-      const successMessage = "SCSS Variables Completion: Variables reloaded successfully.";
-      vscode.window.showInformationMessage(successMessage);
-      outputChannel.appendLine(successMessage);
+      vscode.window.showInformationMessage(
+        "SCSS Variables Completion: Variables reloaded successfully."
+      );
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : String(e);
-      const message = `SCSS Variables Completion: Error parsing "${filePath}": ${errorMessage}`;
-      vscode.window.showErrorMessage(message);
-      outputChannel.appendLine(message);
+      vscode.window.showErrorMessage(
+        `SCSS Variables Completion: Error parsing "${filePath}": ${errorMessage}`
+      );
       variables = {};
       updateCachedCompletions();
     }
@@ -214,4 +248,6 @@ export function activate(context: vscode.ExtensionContext): void {
 /**
  * Deactivate the extension.
  */
-export function deactivate(): void {}
+export function deactivate(): void {
+  outputChannel.dispose();
+}

@@ -1,71 +1,65 @@
-# scss-variables-completion README
+# SCSS Variables Completion
 
-This is the README for your extension "scss-variables-completion". After writing up a brief description, we recommend including the following sections.
+![SCSS Variables Completion Logo](images/icon.png)
+
+A Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS files. The extension reads variable definitions from a JSON configuration file and provides real-time completion suggestions with documentation.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- Autocompletion for CSS custom properties in .scss and .module.scss files
+- Variable documentation with values and descriptions
+- Live reload when the variables JSON file changes
+- Commands to manually reload and open the variables JSON file
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- Visual Studio Code version 1.83.0 or higher
+- A JSON file containing your CSS variable definitions
 
-## Extension Settings
+## Installation
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+1. Install the extension through VS Code's extension marketplace
+2. Create a `scssVariables.json` file in your workspace root (or configure a custom path)
 
-For example:
+## Configuration
 
 This extension contributes the following settings:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- `scssVariables.path`: Path to the JSON file containing SCSS variable definitions (default: "scssVariables.json")
 
-## Known Issues
+![SCSS Variables Completion Logo](images/set-path-to-scssVariables.png)
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+## JSON File Format
 
-## Release Notes
+Create a JSON file with the following structure:
 
-Users appreciate release notes as you update your extension.
+```json
+{
+  "border-radius-large": {
+    "value": "8px",
+    "description": "Large border radius for components"
+  },
+  "color-primary": {
+    "value": "#ff0000",
+    "description": "Primary brand color"
+  }
+}
+```
 
-### 1.0.0
+## Usage
 
-Initial release of ...
+1. In your SCSS files, type `var(--` to trigger autocompletion
+2. Select a variable from the completion list to insert it
+3. Variables can be filtered by typing partial names
+4. Hover over completions to see values and descriptions
 
-### 1.0.1
+## Commands
 
-Fixed issue #.
+- SCSS Variables: Reload Variables JSON : Manually reload the variables from the JSON file
+- SCSS Variables: Open Variables JSON : Open the variables JSON file for editing
 
-### 1.1.0
+![SCSS Variables Completion Logo](images/commands.png)
 
-Added features X, Y, and Z.
+## Extension Settings
 
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+- `scssVariables.path` : Set the path to your variables JSON file relative to the workspace root

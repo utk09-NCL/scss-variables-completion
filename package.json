@@ -1,21 +1,43 @@
 {
   "name": "scss-variables-completion",
-  "displayName": "scss-variables-completion",
+  "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion for SCSS variables based on a JSON configuration.",
-  "version": "0.0.1",
+  "version": "0.0.4",
+  "publisher": "utk09-NCL",
+  "repository": "https://github.com/utk09-NCL/scss-variables-completion",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.83.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:scss",
+    "onLanguage:module.scss",
+    "onCommand:scss-variables-completion.reload",
+    "onCommand:scss-variables-completion.open"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "SCSS Variables",
+      "properties": {
+        "scssVariables.path": {
+          "type": "string",
+          "default": "scssVariables.json",
+          "description": "Path to the JSON file containing SCSS variable definitions."
+        }
+      }
+    },
     "commands": [
       {
-        "command": "scss-variables-completion.helloWorld",
-        "title": "Hello World"
+        "command": "scss-variables-completion.reload",
+        "title": "SCSS Variables: Reload Variables JSON"
+      },
+      {
+        "command": "scss-variables-completion.open",
+        "title": "SCSS Variables: Open Variables JSON"
       }
     ]
   },
@@ -34,7 +56,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.97.0",
+    "@types/vscode": "^1.83.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@typescript-eslint/eslint-plugin": "^8.22.0",

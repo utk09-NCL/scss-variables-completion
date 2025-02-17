@@ -1,0 +1,10 @@
+{
+  "border-radius-large": {
+    "value": "8px",
+    "description": "#fff on dark mode, #1a1a1a on light mode"
+  },
+  "color-primary": {
+    "value": "#ff0000",
+    "description": "Primary color"
+  }
+}

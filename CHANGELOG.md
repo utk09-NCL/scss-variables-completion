@@ -1,9 +1,13 @@
 # Change Log
 
-All notable changes to the "scss-variables-completion" extension will be documented in this file.
+## [0.0.1] - 2024
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### Added
 
-## [Unreleased]
-
-- Initial release
+- Initial release of SCSS Variables Completion extension
+- Auto-completion support for CSS custom properties (CSS variables) in SCSS files
+- JSON configuration file support for variable definitions
+- Live reload of variables when JSON file changes
+- Variable documentation support with values and descriptions
+- Commands to manually reload and open variables JSON file
+- Support for both `.scss` and `.module.scss` files

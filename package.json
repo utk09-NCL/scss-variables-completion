@@ -2,7 +2,7 @@
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion for SCSS variables from a JSON file, with fuzzy matching, multi-root support, and a WebView preview.",
-  "version": "0.1.3",
+  "version": "0.1.7",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",

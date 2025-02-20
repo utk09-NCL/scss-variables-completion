@@ -68,7 +68,11 @@ export async function loadVariablesFromJson(
     }
   } catch (err: unknown) {
     // If reading the file fails, check if the error indicates the file was not found.
-    if (err instanceof Error && ((err as ICustomError).code === "FileNotFound" || (err as ICustomError).code === "ENOENT")) {
+    if (
+      err instanceof Error &&
+      ((err as ICustomError).code === "FileNotFound" ||
+        (err as ICustomError).code === "ENOENT")
+    ) {
       // Prompt the user with a warning message asking whether to create the file.
       const choice = await vscode.window.showWarningMessage(
         `File "${relativePath}" not found in folder "${folderUri.fsPath}". Do you want to create it?`,
@@ -94,7 +98,9 @@ export async function loadVariablesFromJson(
         }
       } else {
         // If the user declines to create the file, throw an error.
-        throw new Error(`File "${relativePath}" is required but was not created.`);
+        throw new Error(
+          `File "${relativePath}" is required but was not created.`
+        );
       }
     } else {
       // For other types of errors, rethrow them.

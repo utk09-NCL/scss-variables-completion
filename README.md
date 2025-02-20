@@ -2,34 +2,35 @@
 
 ![SCSS Variables Completion Logo](./images/icon.png)
 
-SCSS Variables Completion is a Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS files. Simply define your design tokens in a JSON file, and this extension will offer contextual suggestions based on:
+SCSS Variables Completion is a Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS and CSS files. Define your design tokens in a JSON file and let the extension offer contextual suggestions based on:
 
-- The **CSS property** you’re typing (e.g., only show color variables when typing `color: var(--`).
-- **Fuzzy matching** of partial variable names after `var(--`.
-- **Multi-root workspace** capability.
-
-It also supports **multi-root workspaces**—if you have more than one folder in your workspace, it will merge design tokens from each folder’s JSON file.
+- The CSS property you’re typing (e.g., only show color variables when typing color: var(--).
+- Fuzzy matching of partial variable names after var(-- (even within empty parentheses).
+- Native colour preview: When a token includes a hex color, a color swatch is shown to the left of the variable name (just like Tailwind CSS IntelliSense).
+- Detailed documentation in the suggestions panel, displaying both the token’s value and description.
+- Multi-root workspace capability.
 
 ---
 
 ## Features
 
-- **Autocompletion**
-  When you type `var(--` in your `.scss` or `.module.scss` file, the extension suggests matching variables.
-- **Property-Based Filtering**
-  Suggests only variables that list the current CSS property in `cssAttributesSupported`.
-- **Simple Fuzzy Matching**
-  Type part of a variable name after `var(--` and see partial matches.
-- **Multi-Root Support**
-  Loads and merges tokens from each workspace folder.
-- **Live Reload**
-  Automatically updates completions when the JSON file changes.
-- **Commands**
-  - **Reload Variables** – Manually reload tokens.
-  - **Open Variables File** – Quickly open the JSON file for editing.
-  - **Preview All Variables** – View a table of loaded tokens in a WebView panel.
-- **Debug Logging**
-  An output channel named “SCSS Variables Completion” logs any errors or skipped folders.
+- **Autocompletion on Demand**:
+When you type `var(--` (or even `var()`, or `var(--)`) in your `.scss`, `.module.scss`, or `.css` file, the extension shows matching design tokens—even if the parentheses are empty. You can also **force suggestions** using `CTRL+SPACE`.
+
+- **Property-Based Filtering**:
+Only variables that list the current CSS property in `cssAttributesSupported` are suggested. For example, when typing color: var(--, only tokens supporting the color property appear.
+
+- **Detailed Documentation**:
+Hovering over a suggestion shows a documentation popup that includes the token’s description and its value (pretty-printed JSON), so you know exactly what the token represents.
+
+- **Multi-Root Support**:
+The extension loads and merges tokens from each workspace folder. If a folder does not have the designated JSON file, the extension will skip it (and log a warning).
+
+- **Commands**:
+  - SCSS Variables: Reload Variables – Forces the extension to re-read your JSON files and update the suggestions.
+  - SCSS Variables: Open Variables File – Opens the JSON file from the first workspace folder for quick editing.
+- **Debugging**:
+An output channel named "SCSS Variables Completion" logs any errors, JSON parsing issues, or skipped folders.
 
 ---
 
@@ -43,7 +44,7 @@ It also supports **multi-root workspaces**—if you have more than one folder in
 ## Installation
 
 1. Install the extension from the VS Code Marketplace.
-2. Make sure you have a file named `scssVariables.json` in your workspace (or configure a custom path in Settings).
+2. Ensure you have a file named `scssVariables.json` in your workspace (or configure a custom path in Settings).
 
 ---
 
@@ -82,6 +83,15 @@ Create your design tokens in JSON. Each key is the variable name **without** the
     "value": "8px",
     "description": "Large border radius",
     "cssAttributesSupported": ["border-radius"]
+  },
+  "border-radius-sm": {
+    "value": {
+      "small": "4px",
+      "medium": "6px",
+      "large": "8px"
+    },
+    "description": "Small border radius",
+    "cssAttributesSupported": ["border-radius"]
   }
 }
 ```
@@ -96,13 +106,12 @@ Create your design tokens in JSON. Each key is the variable name **without** the
 
 ## Usage
 
-1. Open a .scss file in VS Code.
-2. Type a CSS property (e.g., `color:`) and then type `var(--`
-3. The extension will scan all loaded variables:
-    - Only those whose `cssAttributesSupported` includes `color` (case-insensitive) will appear.
-    - If you type further after `var(--`, fuzzy matching narrows the list to tokens containing those letters in order.
-4. Hover over a suggested token to see documentation (description, possible variant values, and supported CSS properties).
-5. Confirm the token, and `var(--your-variable-name)` is inserted.
+1. Open a `.scss`, `.module.scss`, or `.css` file in VS Code.
+2. Type a CSS property (e.g., color:) and then type `var(--`.
+    - Pressing CTRL+SPACE forces suggestions to appear.
+3. Suggestions are filtered to show only those tokens supporting the CSS property, with fuzzy matching on the token name.
+4. Hover over a suggestion to view detailed documentation (description and token value).
+5. Confirm the suggestion to insert `var(--your-variable-name)` with the correct formatting.
 
 ---
 
@@ -110,33 +119,10 @@ Create your design tokens in JSON. Each key is the variable name **without** the
 
 Open the **Command Palette** (Ctrl+Shift+P on Windows/Linux, Cmd+Shift+P on macOS) and type "SCSS Variables" to see:
 
-- SCSS Variables: Reload Variables -
-Forces the extension to re-read your JSON files. Use this if you’ve made big changes.
+- Open the Command Palette (Ctrl+Shift+P on Windows/Linux, Cmd+Shift+P on macOS) and type "SCSS Variables" to access:
 
-- SCSS Variables: Open Variables File -
-Opens the JSON file (from the first workspace folder if you have multiple).
-
-- SCSS Variables: Preview All Variables -
-Generates a WebView panel with a table of all loaded tokens, including their values, descriptions, and supported properties.
-
----
-
-## Multi-Root Workspaces
-
-If you have more than **one folder** in your workspace:
-
-- The extension tries to load a `scssVariables.json` (or custom path) from each folder.
-- If the file doesn’t exist, it asks whether to create it.
-- Any variables found are merged into a single set, with later folders’ variables overriding earlier ones if the keys clash.
-- When any file changes or is re-created, the extension reloads automatically.
-
----
-
-## Debugging
-
-1. Check the Output panel in VS Code (`View > Output`) and select `"SCSS Variables Completion"` to see logs.
-2. You’ll see messages about skipped folders, JSON parse errors, or other issues.
-3. Adjust your JSON files or run `SCSS Variables: Reload Variables` again.
+- **SCSS Variables: Reload Variables** – Reloads the design tokens from the JSON file.
+- **SCSS Variables: Open Variables File** – Opens the JSON file for editing
 
 ---
 

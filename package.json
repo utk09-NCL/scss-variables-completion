@@ -2,7 +2,7 @@
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion for SCSS variables from a JSON file, with fuzzy matching, multi-root support, and a WebView preview.",
-  "version": "0.1.7",
+  "version": "0.1.82",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",
@@ -10,14 +10,20 @@
     "vscode": "^1.83.0"
   },
   "categories": [
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "scss",
+    "css",
+    "design-system",
+    "variables",
+    "completion"
   ],
   "activationEvents": [
     "onLanguage:scss",
-    "onLanguage:module.scss",
-    "onCommand:scss-variables-completion.reload",
-    "onCommand:scss-variables-completion.open",
-    "onCommand:scss-variables-completion.preview"
+    "onLanguage:css",
+    "workspaceContains:**/scssVariables.json"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -27,22 +33,34 @@
         "scssVariables.path": {
           "type": "string",
           "default": "scssVariables.json",
-          "description": "Path to the JSON file containing SCSS variable definitions."
+          "description": "Path to the JSON file containing SCSS variable definitions"
+        },
+        "scssVariables.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable diagnostics for undefined SCSS variables and invalid CSS attribute usage"
         }
       }
     },
     "commands": [
       {
-        "command": "scss-variables-completion.reload",
-        "title": "SCSS Variables: Reload Variables"
+        "command": "scssVariables.reload",
+        "title": "SCSS Variables: Reload Variables",
+        "category": "SCSS Variables"
       },
       {
-        "command": "scss-variables-completion.open",
-        "title": "SCSS Variables: Open Variables File"
-      },
+        "command": "scssVariables.openJson",
+        "title": "SCSS Variables: Open Variables File",
+        "category": "SCSS Variables"
+      }
+    ],
+    "languages": [
       {
-        "command": "scss-variables-completion.preview",
-        "title": "SCSS Variables: Preview All Variables"
+        "id": "scss",
+        "extensions": [
+          ".scss",
+          ".module.scss"
+        ]
       }
     ]
   },

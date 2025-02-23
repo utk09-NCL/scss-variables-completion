@@ -3,24 +3,26 @@ import * as vscode from "vscode";
 import { ScssVariable } from "./jsonLoader";
 
 /**
- * Registers diagnostics to warn about SCSS variables used in code that are either undefined
- * or used with unsupported CSS properties.
+ * Sets up warnings in VS Code for SCSS variables that are used but not defined,
+ * or used with the wrong CSS properties.
  *
- * @param variablesMap A map of SCSS variable names to their definitions.
- * @returns A disposable that cleans up the diagnostics when the extension is deactivated.
+ * @param variablesMap - A map of JSON-defined variable names to their details.
+ * @returns A disposable to clean up when the extension stops.
  */
 export function registerDiagnostics(
   variablesMap: Map<string, ScssVariable>
 ): vscode.Disposable {
+  // Create a collection for showing warnings.
   const diagnosticCollection =
     vscode.languages.createDiagnosticCollection("scssVariables");
 
   /**
-   * Analyzes a document for SCSS variable issues and updates the diagnostics collection.
+   * Checks a file for variable usage problems and adds warnings.
    *
-   * @param document The text document to analyze.
+   * @param document - The file to check.
    */
   function updateDiagnostics(document: vscode.TextDocument): void {
+    // Only check SCSS or CSS files that are actual files (not virtual).
     if (
       document.uri.scheme !== "file" ||
       !["scss", "css"].includes(document.languageId)
@@ -28,25 +30,37 @@ export function registerDiagnostics(
       return;
     }
 
-    const diagnostics: vscode.Diagnostic[] = [];
-    const text = document.getText();
+    const diagnostics: vscode.Diagnostic[] = []; // List of warnings.
+    const text = document.getText(); // Get all text in the file.
 
-    // Regex to match CSS property and variable usage, e.g. "background-color: var(--varName)"
-    const regex = /(?:^|\s)([\w-]+)\s*:\s*var\(--([\w-]+)\)/g;
+    // Find all locally defined CSS variables (e.g., "--my-var: value;").
+    const localVarRegex = /--([\w-]+)\s*:/g;
+    const localVars = new Set<string>();
+    let localMatch: RegExpExecArray | null;
+    while ((localMatch = localVarRegex.exec(text)) !== null) {
+      localVars.add(localMatch[1]); // Add each local variable to the set.
+    }
+
+    // Look for uses of variables like "color: var(--my-var)".
+    const regex = /(?:^|\s)([\w-]+)\s*:\s*var\(--([\w-]+)\s*\)/g;
     let match: RegExpExecArray | null;
-
     while ((match = regex.exec(text)) !== null) {
-      const cssProperty = match[1].toLowerCase();
-      const varName = match[2];
-      const variable = variablesMap.get(varName);
+      const cssProperty = match[1].toLowerCase(); // The property (e.g., "color").
+      const varName = match[2]; // The variable name (e.g., "my-var").
 
+      // Skip if the variable is defined locally in this file.
+      if (localVars.has(varName)) {
+        continue;
+      }
+
+      const variable = variablesMap.get(varName); // Get JSON definition if it exists.
       if (!variable) {
-        // Variable not defined in the JSON.
+        // If it’s not defined in JSON, warn about it.
         const startPos = document.positionAt(
-          match.index + match[0].indexOf(varName)
+          match.index + match[0].indexOf(varName) // Where the variable name starts.
         );
         const endPos = document.positionAt(
-          match.index + match[0].indexOf(varName) + varName.length
+          match.index + match[0].indexOf(varName) + varName.length // Where it ends.
         );
         diagnostics.push(
           new vscode.Diagnostic(
@@ -60,9 +74,9 @@ export function registerDiagnostics(
           .map((attr) => attr.toLowerCase())
           .includes(cssProperty)
       ) {
-        // Variable exists but is not supported for the given CSS property.
-        const startPos = document.positionAt(match.index);
-        const endPos = document.positionAt(match.index + match[0].length);
+        // If it’s defined but not allowed for this property, warn.
+        const startPos = document.positionAt(match.index); // Start of the whole rule.
+        const endPos = document.positionAt(match.index + match[0].length); // End of it.
         diagnostics.push(
           new vscode.Diagnostic(
             new vscode.Range(startPos, endPos),
@@ -73,10 +87,11 @@ export function registerDiagnostics(
       }
     }
 
+    // Apply the warnings to this file.
     diagnosticCollection.set(document.uri, diagnostics);
   }
 
-  // Listen for document changes and update diagnostics.
+  // Set up listeners to update warnings when files change or open.
   const subscriptions = [
     vscode.workspace.onDidChangeTextDocument((e) =>
       updateDiagnostics(e.document)
@@ -84,8 +99,8 @@ export function registerDiagnostics(
     vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
   ];
 
-  // Update diagnostics for all open documents.
+  // Check all currently open files right away.
   vscode.workspace.textDocuments.forEach(updateDiagnostics);
-
+  // Return a cleanup object for all resources.
   return vscode.Disposable.from(diagnosticCollection, ...subscriptions);
 }

@@ -3,9 +3,7 @@ import tsParser from "@typescript-eslint/parser";
 
 export default [
   {
-    files: ["**/*.ts"],
-  },
-  {
+    files: ["src/**/*.ts"],
     plugins: {
       "@typescript-eslint": typescriptEslint,
     },
@@ -34,11 +32,6 @@ export default [
         {
           selector: "function",
           format: ["camelCase"],
-        },
-        {
-          selector: "interface",
-          format: ["PascalCase"],
-          prefix: ["I"],
         },
       ],
       "@typescript-eslint/explicit-function-return-type": "warn",

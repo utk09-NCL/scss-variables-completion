@@ -1,4 +1,6 @@
 const esbuild = require("esbuild");
+const fs = require("fs");
+const path = require("path");
 
 const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
@@ -25,6 +27,21 @@ const esbuildProblemMatcherPlugin = {
   },
 };
 
+function copyFolderSync(from, to) {
+  if (!fs.existsSync(to)) {
+    fs.mkdirSync(to, { recursive: true });
+  }
+  fs.readdirSync(from).forEach((element) => {
+    const fromPath = path.join(from, element);
+    const toPath = path.join(to, element);
+    if (fs.lstatSync(fromPath).isFile()) {
+      fs.copyFileSync(fromPath, toPath);
+    } else {
+      copyFolderSync(fromPath, toPath);
+    }
+  });
+}
+
 async function main() {
   const ctx = await esbuild.context({
     entryPoints: ["src/extension.ts"],
@@ -44,6 +61,10 @@ async function main() {
   } else {
     await ctx.rebuild();
     await ctx.dispose();
+    // Copy the schema folder from src/schema to dist/schema.
+    const schemaSrc = path.join(__dirname, "src", "schema");
+    const schemaDest = path.join(__dirname, "dist", "schema");
+    copyFolderSync(schemaSrc, schemaDest);
   }
 }
 

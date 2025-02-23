@@ -1,8 +1,8 @@
 {
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
-  "description": "Provides autocompletion for SCSS variables from a JSON file with design system integration",
-  "version": "0.1.87",
+  "description": "Provides autocompletion, diagnostics, and hover info for SCSS variables from a JSON design system file, with deep workspace scanning",
+  "version": "0.1.90",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",
@@ -20,7 +20,9 @@
     "css",
     "design-system",
     "variables",
-    "autocomplete"
+    "autocomplete",
+    "diagnostics",
+    "hover"
   ],
   "activationEvents": [
     "onLanguage:scss",
@@ -31,10 +33,10 @@
     "configuration": {
       "title": "SCSS Variables",
       "properties": {
-        "scssVariables.configPath": {
+        "scssVariables.path": {
           "type": "string",
           "default": "scssVariables.json",
-          "description": "Relative path to the JSON configuration file"
+          "description": "Relative path to the JSON file containing SCSS variable definitions"
         },
         "scssVariables.logLevel": {
           "type": "string",
@@ -45,7 +47,7 @@
             "debug"
           ],
           "default": "info",
-          "description": "Logging verbosity level"
+          "description": "Logging verbosity level for the extension"
         },
         "scssVariables.excludedFolders": {
           "type": "array",
@@ -57,20 +59,25 @@
             "dist",
             "build"
           ],
-          "description": "Folders to exclude from scanning"
+          "description": "Folders to exclude when scanning the workspace for SCSS files"
         },
-        "scssVariables.validationPaths": {
+        "scssVariables.scanPaths": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "Additional paths for SCSS validation against the JSON configuration"
+          "description": "Specific paths or glob patterns to scan for SCSS files (e.g., ['src/styles', 'components/**/*.scss']). Empty means scan all."
+        },
+        "scssVariables.maxScanDepth": {
+          "type": "number",
+          "default": 30,
+          "description": "Maximum folder depth to scan for SCSS files (e.g., 30 levels deep)"
         },
         "scssVariables.enableDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Enable validation and problem reporting"
+          "description": "Enable diagnostics for undefined variables, unsupported properties, and unused JSON variables"
         }
       }
     },
@@ -107,6 +114,12 @@
         "extensions": [
           ".scss",
           ".module.scss"
+        ]
+      },
+      {
+        "id": "css",
+        "extensions": [
+          ".css"
         ]
       }
     ]

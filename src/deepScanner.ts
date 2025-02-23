@@ -1,112 +1,166 @@
 // src/deepScanner.ts
 import * as vscode from "vscode";
-import { getExcludedFolders, Logger } from "./config";
+import {
+  getExcludedFolders,
+  getScanPaths,
+  getMaxScanDepth,
+  Logger,
+} from "./config";
 
-/** Describes a variable, mixin, or function defined in SCSS files. */
+/**
+ * Represents a local SCSS definition found in the workspace (e.g., variable, mixin, or function).
+ */
 export type LocalDefinition = {
-  name: string; // Name of the item (e.g., "my-color").
-  fileUri: vscode.Uri; // Where it’s defined.
-  line: number; // Line number in the file.
-  kind: "variable" | "mixin" | "function"; // What type it is.
+  name: string; // The name (e.g., "my-color").
+  fileUri: vscode.Uri; // The file where it’s defined.
+  line: number; // The line number (0-based).
+  kind: "variable" | "mixin" | "function"; // The type of definition.
   value?: string; // The actual code (e.g., "#f00").
 };
 
 /**
- * Scans the workspace for SCSS/SASS definitions like variables, mixins, and functions.
- * Keeps track of them and updates when files change, with a delay to avoid overloading.
+ * Scans the workspace for SCSS/SASS definitions and keeps them updated.
+ * Uses a debounce delay to avoid scanning too often when files change.
  */
 export class DeepScanner {
-  private localDefinitions: Map<string, LocalDefinition[]> = new Map(); // Stores all found definitions.
-  private scanTimer: NodeJS.Timeout | undefined; // Timer for delayed scans.
-  private debounceInterval: number; // How long to wait before rescanning.
-  private logger: Logger; // For logging what’s happening.
-  private fileWatcher: vscode.FileSystemWatcher; // Watches for file changes.
+  // Stores definitions, grouped by name (e.g., "my-color" -> array of definitions).
+  private localDefinitions: Map<string, LocalDefinition[]> = new Map();
+  // Timer for delaying scans after file changes.
+  private scanTimer: NodeJS.Timeout | undefined;
+  // Delay time in milliseconds before rescanning.
+  private debounceInterval: number;
+  // Logger for tracking scan activity.
+  private logger: Logger;
+  // Watches SCSS/SASS files for changes.
+  private fileWatcher: vscode.FileSystemWatcher;
+  // Maximum folder depth to scan.
+  private maxScanDepth: number;
 
   /**
-   * Sets up a new scanner with a delay and logger.
+   * Creates a new scanner instance with a delay and logger.
    *
-   * @param debounceInterval - Time (in milliseconds) to wait before scanning after a change.
-   * @param logger - Tool for logging messages.
+   * @param debounceInterval - Time (in ms) to wait before rescanning after a change.
+   * @param logger - Logger for debug/info/error messages.
    */
   constructor(debounceInterval: number, logger: Logger) {
     this.debounceInterval = debounceInterval; // Set the delay time.
-    this.logger = logger; // Save the logger.
+    this.logger = logger; // Store the logger.
+    this.maxScanDepth = getMaxScanDepth(); // Get the max depth from settings.
     // Set up a watcher for SCSS and SASS files.
     this.fileWatcher =
       vscode.workspace.createFileSystemWatcher("**/*.{scss,sass}");
-    // When a file changes, creates, or deletes, trigger a rescan.
+    // Bind event handlers to watch for file changes.
     this.fileWatcher.onDidChange(this.onFileChange.bind(this));
     this.fileWatcher.onDidCreate(this.onFileChange.bind(this));
     this.fileWatcher.onDidDelete(this.onFileChange.bind(this));
   }
 
   /**
-   * Responds to file changes by scheduling a new scan.
+   * Handles file changes by scheduling a new scan.
    *
-   * @param uri - The file that changed.
+   * @param uri - The URI of the file that changed.
    */
   private onFileChange(uri: vscode.Uri): void {
-    this.logger.debug(`File change detected: ${uri.fsPath}`); // Log the change.
+    // Log that a file change was detected.
+    this.logger.debug(`File change detected: ${uri.fsPath}`);
     this.scheduleScan(); // Plan a rescan.
   }
 
-  /** Plans a scan after a delay, canceling any previous plan. */
+  /**
+   * Schedules a scan after a delay, canceling any previous scheduled scan.
+   */
   private scheduleScan(): void {
     if (this.scanTimer) {
-      clearTimeout(this.scanTimer); // Cancel the old timer.
+      clearTimeout(this.scanTimer); // Cancel the old timer if it exists.
     }
-    // Set a new timer to scan after the delay.
+    // Set a new timer to scan after the debounce interval.
     this.scanTimer = setTimeout(() => {
       this.scanWorkspace();
     }, this.debounceInterval);
   }
 
-  /** Scans all SCSS/SASS files in the workspace for definitions. */
+  /**
+   * Scans the workspace for SCSS/SASS files and finds variables, mixins, and functions.
+   * Shows a progress notification to the user during the scan.
+   */
   public async scanWorkspace(): Promise<void> {
-    this.logger.info("Starting deep scan of workspace for SCSS definitions"); // Log the start.
-    this.localDefinitions.clear(); // Reset the list of definitions.
-    try {
-      // Find all SCSS/SASS files, ignoring excluded folders.
-      const files = await vscode.workspace.findFiles(
-        "**/*.{scss,sass}",
-        `{${getExcludedFolders().join(",")}}`
-      );
-      // Process each file.
-      for (const file of files) {
-        const document = await vscode.workspace.openTextDocument(file); // Open the file.
-        this.parseDocument(document); // Look for definitions in it.
+    // Wrap the scan in a progress notification.
+    return vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification, // Show in the notification area.
+        title: "Scanning workspace for SCSS definitions", // Title of the progress bar.
+        cancellable: false, // No cancel button (it’s automatic).
+      },
+      async (progress) => {
+        // Log the start of the scan.
+        this.logger.info(
+          "Starting deep scan of workspace for SCSS definitions"
+        );
+        this.localDefinitions.clear(); // Clear out old definitions.
+        try {
+          // Get user-defined scan paths, or use a default if none are set.
+          const scanPaths = getScanPaths();
+          const includePattern =
+            scanPaths.length > 0
+              ? `{${scanPaths.join(",")}}`
+              : "**/*.{scss,sass}";
+          // Get folders to exclude from the scan.
+          const excludePattern = `{${getExcludedFolders().join(",")}}`;
+          // Find all SCSS/SASS files, respecting the max depth.
+          const files = await vscode.workspace.findFiles(
+            includePattern,
+            excludePattern,
+            this.maxScanDepth
+          );
+          // Update the progress bar with the number of files found.
+          progress.report({ message: `Found ${files.length} files to scan` });
+
+          // Process each file one by one.
+          for (let i = 0; i < files.length; i++) {
+            const document = await vscode.workspace.openTextDocument(files[i]);
+            this.parseDocument(document); // Look for definitions in the file.
+            // Update progress with the current file count.
+            progress.report({
+              message: `Processed ${i + 1}/${files.length} files`,
+            });
+          }
+          // Log how many definitions were found.
+          this.logger.info("Deep scan completed", {
+            count: this.getLocalDefinitions().length,
+          });
+        } catch (err) {
+          // Log any errors that occur during the scan.
+          this.logger.error("Error during deep scan", err);
+        }
       }
-      // Log how many definitions were found.
-      this.logger.info("Deep scan completed", {
-        count: this.getLocalDefinitions().length,
-      });
-    } catch (err) {
-      this.logger.error("Error during deep scan", err); // Log any problems.
-    }
+    );
   }
 
   /**
-   * Looks through a file for SCSS variables, CSS variables, mixins, and functions.
+   * Parses a single SCSS/SASS file to find definitions.
    *
-   * @param document - The file to check.
+   * @param document - The file to scan.
    */
   private parseDocument(document: vscode.TextDocument): void {
-    const lines = document.getText().split(/\r?\n/); // Split into lines.
+    // Split the file into lines.
+    const lines = document.getText().split(/\r?\n/);
+    // Check each line for definitions.
     lines.forEach((line, index) => {
-      // Look for SCSS variables like "$color: red;".
+      // Look for SCSS variables like "$my-var: value;".
       const variableMatch = line.match(/^\s*\$([\w-]+)\s*:/);
       if (variableMatch) {
-        const name = variableMatch[1]; // Get the variable name.
+        const name = variableMatch[1];
         const def: LocalDefinition = {
           name,
           fileUri: document.uri,
           line: index,
           kind: "variable",
-          value: line.trim(), // Save the full line.
+          value: line.trim(),
         };
-        this.addLocalDefinition(name, def); // Store it.
+        this.addLocalDefinition(name, def); // Add to the collection.
       }
-      // Look for CSS variables like "--color: #f00;".
+
+      // Look for CSS custom properties like "--my-var: #f00;".
       const cssVarMatch = line.match(/^\s*--([\w-]+)\s*:/);
       if (cssVarMatch) {
         const name = cssVarMatch[1];
@@ -119,6 +173,7 @@ export class DeepScanner {
         };
         this.addLocalDefinition(name, def);
       }
+
       // Look for mixins like "@mixin my-mixin {".
       const mixinMatch = line.match(/^\s*@mixin\s+([\w-]+)/);
       if (mixinMatch) {
@@ -132,6 +187,7 @@ export class DeepScanner {
         };
         this.addLocalDefinition(name, def);
       }
+
       // Look for functions like "@function my-func() {".
       const functionMatch = line.match(/^\s*@function\s+([\w-]+)/);
       if (functionMatch) {
@@ -152,25 +208,32 @@ export class DeepScanner {
    * Adds a definition to the collection, grouping by name.
    *
    * @param name - The name of the variable/mixin/function.
-   * @param def - The definition details.
+   * @param def - The definition details to add.
    */
   private addLocalDefinition(name: string, def: LocalDefinition): void {
     if (!this.localDefinitions.has(name)) {
-      this.localDefinitions.set(name, []); // Start a new list if needed.
+      this.localDefinitions.set(name, []); // Create a new array if this name isn’t tracked yet.
     }
-    this.localDefinitions.get(name)?.push(def); // Add to the list.
+    this.localDefinitions.get(name)?.push(def); // Add the definition to the array.
   }
 
-  /** Gets all definitions as a flat array. */
+  /**
+   * Gets all local definitions as a flat array.
+   *
+   * @returns An array of all definitions found in the workspace.
+   */
   public getLocalDefinitions(): LocalDefinition[] {
     let results: LocalDefinition[] = [];
+    // Combine all definition arrays into one.
     this.localDefinitions.forEach((defs) => {
-      results = results.concat(defs); // Combine all lists into one.
+      results = results.concat(defs);
     });
     return results;
   }
 
-  /** Cleans up resources when the scanner is no longer needed. */
+  /**
+   * Cleans up resources when the extension stops.
+   */
   public dispose(): void {
     this.fileWatcher.dispose(); // Stop watching files.
     if (this.scanTimer) {

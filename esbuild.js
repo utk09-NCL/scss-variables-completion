@@ -12,9 +12,7 @@ const esbuildProblemMatcherPlugin = {
   name: "esbuild-problem-matcher",
 
   setup(build) {
-    build.onStart(() => {
-      console.log("[watch] build started");
-    });
+    build.onStart(() => console.log("[watch] build started"));
     build.onEnd((result) => {
       result.errors.forEach(({ text, location }) => {
         console.error(`✘ [ERROR] ${text}`);
@@ -28,9 +26,7 @@ const esbuildProblemMatcherPlugin = {
 };
 
 function copyFolderSync(from, to) {
-  if (!fs.existsSync(to)) {
-    fs.mkdirSync(to, { recursive: true });
-  }
+  if (!fs.existsSync(to)) fs.mkdirSync(to, { recursive: true });
   fs.readdirSync(from).forEach((element) => {
     const fromPath = path.join(from, element);
     const toPath = path.join(to, element);
@@ -53,7 +49,7 @@ async function main() {
     platform: "node",
     outfile: "dist/extension.js",
     external: ["vscode"],
-    logLevel: "silent",
+    logLevel: "error",
     plugins: [esbuildProblemMatcherPlugin],
   });
   if (watch) {

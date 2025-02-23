@@ -2,138 +2,142 @@
 import * as vscode from "vscode";
 import { ScssVariable } from "./jsonLoader";
 import { LocalDefinition } from "./deepScanner";
+import { Trie } from "./trie";
 
 /**
- * Sets up a completion provider that suggests SCSS variables when typing in CSS/SCSS files.
- * Offers suggestions from both JSON-defined variables and local variables in the code.
- * Filters suggestions based on:
- * - The CSS property (e.g., only color variables for "color").
- * - What the user has typed so far (fuzzy matching).
- * - Whether the variable is from JSON or defined locally.
+ * Registers a completion provider that suggests SCSS variables in CSS/SCSS files.
+ * Uses a Trie for fast prefix matching, supports JSON and local variables, and filters by CSS properties.
  *
- * @param variablesMap - A map of JSON-defined variable names to their details.
- * @param getLocalDefinitions - A function that returns locally defined variables.
- * @returns A disposable object to clean up the provider when the extension stops.
+ * @param variablesMap - A map of variable names from the JSON file to their details.
+ * @param getLocalDefinitions - A function to fetch locally defined variables from the workspace.
+ * @returns A disposable object to unregister the provider when the extension stops.
  */
 export function registerScssCompletionProvider(
   variablesMap: Map<string, ScssVariable>,
   getLocalDefinitions: () => LocalDefinition[]
 ): vscode.Disposable {
-  // Register the provider for SCSS and CSS files, triggered by '(' or '-'.
+  // Create a Trie to store variable names for quick searching.
+  const trie = new Trie();
+  // Add all JSON variable names to the Trie.
+  variablesMap.forEach((_, key) => trie.insert(key));
+  // Add all local variable names to the Trie (updated dynamically later).
+  getLocalDefinitions().forEach((def) => trie.insert(def.name));
+
+  // Register the provider for SCSS and CSS files, triggered by "(", "-", or space (for Ctrl+Space).
   return vscode.languages.registerCompletionItemProvider(
     [{ language: "scss" }, { language: "css" }],
     {
-      // This function runs whenever the user might need suggestions.
+      /**
+       * Provides completion suggestions when the user types in a file.
+       * @param document - The file being edited.
+       * @param position - The cursor’s position in the file.
+       * @returns An array of completion items or undefined if none apply.
+       */
       provideCompletionItems(
-        document: vscode.TextDocument, // The file being edited.
-        position: vscode.Position // Where the cursor is.
+        document: vscode.TextDocument,
+        position: vscode.Position
       ): vscode.ProviderResult<vscode.CompletionItem[]> {
         // Get the current line of text up to the cursor.
         const lineText: string = document.lineAt(position).text;
         // Split the line by semicolons to focus on the current CSS rule.
         const segments = lineText.split(";");
-        const currentSegment = segments[segments.length - 1]; // Last part is the active rule.
+        const currentSegment = segments[segments.length - 1]; // The last segment is the active one.
 
-        // Check if "var(" exists in the current segment.
+        // Check if "var(" is present in the current segment.
         const varPos = currentSegment.lastIndexOf("var(");
         if (varPos === -1) {
-          return []; // No "var(", so no suggestions.
-        }
+          return [];
+        } // No "var(", so no suggestions.
 
-        // Get the text after "var(" to see what the user has typed.
+        // Extract what comes after "var(" to see what the user typed.
         const afterVarText = currentSegment.substring(varPos + 4);
         const trimmedAfterVar = afterVarText.replace(/^\s*/, ""); // Remove leading spaces.
-        // Calculate where the typed text starts relative to "var(".
+        // Calculate where the typed text starts after "var(".
         let relativeStart =
           varPos + 4 + (afterVarText.length - trimmedAfterVar.length);
-        // If the user typed "--", skip those characters in the suggestion.
+        // Skip "--" if already typed to avoid duplication.
         if (trimmedAfterVar.startsWith("--")) {
-          relativeStart += 2; // Move past the "--" so we don’t duplicate it.
+          relativeStart += 2;
         }
 
-        // Clean up whatever the user typed after "var(" by removing closing ")" or ";".
-        let typedPrefix = currentSegment.substring(relativeStart);
-        typedPrefix = typedPrefix.replace(/[);]/g, "").trim(); // Ensure it’s just the variable name prefix.
+        // Clean up the typed prefix by removing ")" or ";".
+        const typedPrefix = currentSegment
+          .substring(relativeStart)
+          .replace(/[);]/g, "")
+          .trim();
 
-        // Figure out where in the document we’ll replace text with the suggestion.
-        const segmentAbsoluteStart = lineText.lastIndexOf(currentSegment); // Start of the current rule.
-        const replacementStart = segmentAbsoluteStart + relativeStart; // Where the prefix begins.
+        // Determine where in the document to insert the suggestion.
+        const segmentAbsoluteStart = lineText.lastIndexOf(currentSegment);
+        const replacementStart = segmentAbsoluteStart + relativeStart;
         const replacementRange = new vscode.Range(
-          new vscode.Position(position.line, replacementStart), // Start of replacement.
-          position // End at the cursor.
+          new vscode.Position(position.line, replacementStart),
+          position
         );
 
-        // Try to figure out which CSS property is being used (e.g., "color" in "color: var(").
+        // Extract the CSS property (e.g., "color" from "color: var(").
         const propertyMatch = currentSegment.match(/([\w-]+)\s*:\s*var\(/);
-        const cssProperty = propertyMatch ? propertyMatch[1].toLowerCase() : ""; // Lowercase for consistency.
+        const cssProperty = propertyMatch ? propertyMatch[1].toLowerCase() : "";
 
-        // Keep track of variables already used in this file to avoid suggesting them again.
+        // Track variables already used in the document to avoid duplicates.
         const usedVariables: Set<string> = new Set();
-        const usedRegex = /var\(\s*--([\w-]+)\s*\)/g; // Matches "var(--variableName)".
+        const usedRegex = /var\(\s*--([\w-]+)\s*\)/g;
         let usedMatch: RegExpExecArray | null;
         while ((usedMatch = usedRegex.exec(document.getText())) !== null) {
-          usedVariables.add(usedMatch[1]); // Add each found variable name to the set.
+          usedVariables.add(usedMatch[1]);
         }
 
-        const completions: vscode.CompletionItem[] = []; // List of suggestions to show.
-        const localDefs = getLocalDefinitions(); // Get variables defined in the code.
-        const localMap = new Map<string, LocalDefinition[]>(); // Group local definitions by name.
+        // Array to hold all completion suggestions.
+        const completions: vscode.CompletionItem[] = [];
+        // Get local definitions from the workspace.
+        const localDefs = getLocalDefinitions();
+        const localMap = new Map<string, LocalDefinition[]>();
         localDefs.forEach((def) => {
           if (!localMap.has(def.name)) {
-            localMap.set(def.name, []); // Initialize an array for this name if it doesn’t exist.
+            localMap.set(def.name, []);
           }
-          localMap.get(def.name)?.push(def); // Add the definition to the array.
+          localMap.get(def.name)?.push(def); // Group local defs by name.
         });
 
-        // Combine all possible variable names from JSON and local definitions.
-        const candidateNamesSet = new Set<string>([
-          ...Array.from(variablesMap.keys()), // JSON variables.
-          ...Array.from(localMap.keys()), // Local variables.
-        ]);
-        const candidateNames = Array.from(candidateNamesSet); // Convert to array for looping.
+        // Use the Trie to find matching variable names based on the prefix.
+        const candidateNames = typedPrefix
+          ? trie.find(typedPrefix)
+          : [...variablesMap.keys(), ...localMap.keys()]; // If no prefix, include all.
 
-        // Loop through each possible variable name to create suggestions.
+        // Loop through each candidate to create suggestions.
         for (const varName of candidateNames) {
-          // Skip if the variable is already used in this file.
           if (usedVariables.has(varName)) {
             continue;
-          }
-          // Skip if the user typed something and it doesn’t match this variable.
-          if (
-            typedPrefix &&
-            !varName.toLowerCase().includes(typedPrefix.toLowerCase())
-          ) {
-            continue; // Fuzzy matching: only suggest if prefix fits.
-          }
+          } // Skip already-used variables.
 
-          // Handle JSON-defined variables.
+          // Handle JSON-defined variables (Design System).
           if (variablesMap.has(varName)) {
-            const variable = variablesMap.get(varName)!; // Get the variable’s details.
-            // If there’s a CSS property, check if this variable supports it.
+            const variable = variablesMap.get(varName)!;
+            // Filter by CSS property if one is present.
             if (cssProperty && variable.cssAttributesSupported) {
               const supported = variable.cssAttributesSupported.some(
                 (attr) => attr.toLowerCase() === cssProperty
               );
               if (!supported) {
-                continue; // Skip if the variable can’t be used with this property.
-              }
+                continue;
+              } // Skip if property isn’t supported.
             }
-            // Create a suggestion item for this JSON variable.
-            const item = new vscode.CompletionItem(`[JSON] ${varName}`);
-            const colorValue = extractColorValue(variable.value); // Check if it’s a color.
+            // Create a completion item for this variable.
+            const item = new vscode.CompletionItem(
+              `[Design System] ${varName}`
+            );
+            const colorValue = extractColorValue(variable.value);
             if (colorValue) {
-              // If it’s a color, show a preview and mark it as a color type.
+              // If it’s a color, show a preview in the dropdown.
               item.label = {
-                label: `[JSON] ${varName}`,
+                label: `[Design System] ${varName}`,
                 description: colorValue,
               };
               item.detail = colorValue;
               item.kind = vscode.CompletionItemKind.Color;
             } else {
-              // Otherwise, it’s just a regular variable.
               item.kind = vscode.CompletionItemKind.Variable;
             }
-            // Add documentation with description and value in Markdown.
+            // Add detailed documentation in Markdown.
             const md = new vscode.MarkdownString();
             md.appendMarkdown(`**Description:** ${variable.description}\n\n`);
             md.appendMarkdown(
@@ -141,23 +145,22 @@ export function registerScssCompletionProvider(
                 variable.value,
                 null,
                 2
-              )}\n\`\`\``
+              )}\n\`\`\`\n\n`
             );
-            md.appendMarkdown(`\n**Source:** Design System (JSON)`);
+            md.appendMarkdown(`**Source:** Design System (JSON)`);
             item.documentation = md;
-            item.insertText = `--${varName}`; // What gets inserted when selected.
-            item.range = replacementRange; // Where to insert it.
-            item.sortText = "0"; // Sort JSON variables first.
-            completions.push(item); // Add to the suggestion list.
+            item.insertText = `--${varName}`; // What gets inserted.
+            item.range = replacementRange; // Where it goes.
+            item.sortText = "0"; // JSON vars sort first.
+            completions.push(item);
           }
 
           // Handle locally defined variables.
           if (localMap.has(varName)) {
-            const defs = localMap.get(varName)!; // Get all definitions for this name.
+            const defs = localMap.get(varName)!;
             defs.forEach((def) => {
-              // Create a suggestion item for this local variable.
-              const item = new vscode.CompletionItem(`[LOCAL] ${varName}`);
-              item.kind = vscode.CompletionItemKind.Variable; // Mark as a variable.
+              const item = new vscode.CompletionItem(`[Local] ${varName}`);
+              item.kind = vscode.CompletionItemKind.Variable;
               const md = new vscode.MarkdownString();
               // Show where it’s defined and its value.
               md.appendMarkdown(
@@ -167,36 +170,37 @@ export function registerScssCompletionProvider(
               );
               md.appendMarkdown(`\`\`\`\n${def.value}\n\`\`\``);
               item.documentation = md;
-              item.insertText = `--${varName}`; // Insert the variable name.
-              item.range = replacementRange; // Where to insert.
-              item.sortText = "1"; // Sort local variables after JSON ones.
-              completions.push(item); // Add to suggestions.
+              item.insertText = `--${varName}`;
+              item.range = replacementRange;
+              item.sortText = "1"; // Local vars sort after JSON.
+              completions.push(item);
             });
           }
         }
         return completions; // Return all suggestions to VS Code.
       },
     },
-    "(", // Trigger suggestion after typing "(".
-    "-" // Trigger after typing "-".
+    "(", // Trigger after "(" in "var(".
+    "-", // Trigger after "-" in "--".
+    " " // Trigger on space (e.g., for Ctrl+Space).
   );
 }
 
 /**
- * Looks for a hexadecimal color code (like #FF0000) in a set of CSS values.
- * Used to show color previews in suggestions.
+ * Extracts the first hexadecimal color code from a set of CSS values.
+ * Used to show color previews in the completion dropdown.
  *
- * @param value - An object with CSS values (e.g., {"light": "#ff0000", "dark": "#00ff00"}).
- * @returns The first hex color found, or undefined if there’s none.
+ * @param value - An object with theme keys (e.g., "light") and CSS values (e.g., "#ff0000").
+ * @returns The first hex color found, or undefined if none exists.
  */
 function extractColorValue(value: Record<string, string>): string | undefined {
   // Loop through all values in the object.
   for (const val of Object.values(value)) {
-    // Check if the value matches a 6-digit hex color code.
+    // Look for a 6-digit hex color code (e.g., #FF0000).
     const hexMatch = val.match(/#[0-9a-fA-F]{6}/);
     if (hexMatch) {
-      return hexMatch[0]; // Return the first match we find.
-    }
+      return hexMatch[0];
+    } // Return the first match.
   }
   return undefined; // No hex color found.
 }

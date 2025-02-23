@@ -10,8 +10,7 @@
           "type": "object",
           "patternProperties": {
             "^[\\w-]+$": {
-              "type": "string",
-              "pattern": "^(var\\(.*\\)|#[0-9a-fA-F]{6})$"
+              "type": "string"
             }
           },
           "additionalProperties": true

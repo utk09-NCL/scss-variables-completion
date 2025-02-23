@@ -8,140 +8,190 @@ import { DeepScanner } from "./deepScanner";
 import { showOverviewPanel } from "./overviewPanel";
 import { validateJsonFile } from "./jsonValidator";
 import { checkUnusedJsonVariables } from "./checkUnused";
+import { registerHoverProvider } from "./hoverProvider";
 
-// Keep the scanner available across the extension.
+// Global variable to maintain the scanner instance across the extension.
 let deepScanner: DeepScanner;
 
 /**
- * Starts the extension when VS Code activates it (e.g., when opening a .scss file).
- * Sets up completions, warnings, scanning, and commands.
+ * Main entry point for the extension, called when VS Code activates it.
+ * Sets up completions, diagnostics, hovering, scanning, commands, and file watchers.
  *
- * @param context - VS Code’s tools for managing the extension.
+ * @param context - VS Code’s extension context for managing subscriptions and lifecycle.
  */
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
-  // Set up a place to show logs in VS Code.
+  // Create an output channel for logging.
   const outputChannel = vscode.window.createOutputChannel("SCSS Variables");
-  const logger = createLogger(outputChannel); // Create a logger for tracking.
+  // Create a logger with the output channel.
+  const logger = createLogger(outputChannel);
+  logger.info("Extension activation started"); // Log the start.
 
-  // Load the JSON variables into memory.
-  const { variablesMap, cssAttributeMap } = await loadScssVariables();
+  try {
+    // Load SCSS variables from the JSON file first.
+    logger.info("Loading SCSS variables");
+    const { variablesMap, cssAttributeMap } = await loadScssVariables();
 
-  // Add the completion provider for suggesting variables.
-  context.subscriptions.push(
-    registerScssCompletionProvider(variablesMap, () =>
-      deepScanner.getLocalDefinitions()
-    )
-  );
+    // Initialize the deep scanner before using it in providers.
+    logger.info("Initializing deep scanner");
+    deepScanner = new DeepScanner(1000, logger);
+    await deepScanner.scanWorkspace(); // Perform an initial scan.
+    context.subscriptions.push(deepScanner); // Add to subscriptions for cleanup.
 
-  // Add warnings for variable misuse.
-  context.subscriptions.push(registerDiagnostics(variablesMap));
+    // Register the completion provider after deepScanner is ready.
+    logger.info("Registering completion provider");
+    context.subscriptions.push(
+      registerScssCompletionProvider(variablesMap, () =>
+        deepScanner.getLocalDefinitions()
+      )
+    );
 
-  // Start scanning for local definitions with a 1-second delay between scans.
-  deepScanner = new DeepScanner(1000, logger);
-  await deepScanner.scanWorkspace(); // Do an initial scan.
-  context.subscriptions.push(deepScanner); // Clean up when extension stops.
+    // Register diagnostics for variable usage validation.
+    logger.info("Registering diagnostics");
+    context.subscriptions.push(registerDiagnostics(variablesMap));
 
-  // Add a command to refresh variables and rescan.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      // Register the command.
-      "scssVariables.refresh",
-      async (): Promise<void> => {
-        // Reload variables from JSON.
-        const result = await loadScssVariables();
-        variablesMap.clear(); // Clear old data.
-        for (const [key, value] of result.variablesMap) {
-          variablesMap.set(key, value); // Update with new data.
+    // Register the hover provider after deepScanner is ready.
+    logger.info("Registering hover provider");
+    context.subscriptions.push(
+      registerHoverProvider(variablesMap, () =>
+        deepScanner.getLocalDefinitions()
+      )
+    );
+
+    // Command: Refresh variables and rescan the workspace.
+    logger.info("Registering refresh command");
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "scssVariables.refresh",
+        async (): Promise<void> => {
+          logger.info("Refresh command executed");
+          const result = await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Reloading SCSS variables from JSON",
+              cancellable: false,
+            },
+            async () => await loadScssVariables()
+          );
+          variablesMap.clear();
+          for (const [key, value] of result.variablesMap) {
+            variablesMap.set(key, value);
+          }
+          cssAttributeMap.clear();
+          for (const [key, set] of result.cssAttributeMap) {
+            cssAttributeMap.set(key, set);
+          }
+          await deepScanner.scanWorkspace();
+          vscode.window.showInformationMessage(
+            "SCSS variables refreshed and deep scan completed"
+          );
         }
-        cssAttributeMap.clear();
-        for (const [key, set] of result.cssAttributeMap) {
-          cssAttributeMap.set(key, set);
-        }
-        await deepScanner.scanWorkspace(); // Rescan the workspace.
-        // Tell the user it’s done.
-        vscode.window.showInformationMessage(
-          "SCSS variables refreshed and deep scan completed"
-        );
-      }
-    )
-  );
+      )
+    );
 
-  // Add a command to open the JSON config file.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "scssVariables.openConfig",
-      async (): Promise<void> => {
-        const config = getConfig();
-        const jsonPath: string = config.get("configPath", "scssVariables.json");
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (workspaceFolder) {
-          const uri = vscode.Uri.joinPath(workspaceFolder.uri, jsonPath); // Build the file path.
-          try {
-            const doc = await vscode.workspace.openTextDocument(uri); // Open the file.
-            await vscode.window.showTextDocument(doc); // Show it to the user.
-          } catch (err) {
-            const errorMessage =
-              err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(
-              `Failed to open ${jsonPath}: ${errorMessage}`
-            );
+    // Command: Open the JSON config file.
+    logger.info("Registering openConfig command");
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "scssVariables.openConfig",
+        async (): Promise<void> => {
+          logger.info("Open config command executed");
+          const config = getConfig();
+          const jsonPath: string = config.get("path", "scssVariables.json");
+          const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+          if (workspaceFolder) {
+            const uri = vscode.Uri.joinPath(workspaceFolder.uri, jsonPath);
+            try {
+              const doc = await vscode.workspace.openTextDocument(uri);
+              await vscode.window.showTextDocument(doc);
+            } catch (err) {
+              const errorMessage =
+                err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(
+                `Failed to open ${jsonPath}: ${errorMessage}`
+              );
+            }
           }
         }
-      }
-    )
-  );
+      )
+    );
 
-  // Add a command to show an overview of variables.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "scssVariables.showOverview",
-      async (): Promise<void> => {
-        showOverviewPanel(variablesMap, deepScanner); // Show the panel.
-      }
-    )
-  );
+    // Command: Show an overview of all variables.
+    logger.info("Registering showOverview command");
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "scssVariables.showOverview",
+        async (): Promise<void> => {
+          logger.info("Show overview command executed");
+          showOverviewPanel(variablesMap, deepScanner);
+        }
+      )
+    );
 
-  // Add a command to validate the JSON file.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "scssVariables.validateJson",
-      async (): Promise<void> => {
-        await validateJsonFile(); // Check the JSON against its schema.
-      }
-    )
-  );
+    // Command: Validate the JSON file against its schema.
+    logger.info("Registering validateJson command");
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "scssVariables.validateJson",
+        async (): Promise<void> => {
+          logger.info("Validate JSON command executed");
+          await validateJsonFile();
+        }
+      )
+    );
 
-  // Add a command to check for unused variables.
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "scssVariables.checkUnused",
-      async (): Promise<void> => {
-        await checkUnusedJsonVariables(variablesMap); // Look for unused JSON variables.
-      }
-    )
-  );
+    // Command: Check for unused JSON variables.
+    logger.info("Registering checkUnused command");
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        "scssVariables.checkUnused",
+        async (): Promise<void> => {
+          logger.info("Check unused command executed");
+          await checkUnusedJsonVariables(variablesMap);
+        }
+      )
+    );
 
-  // Watch the JSON file for changes and reload if it updates.
-  const watcher = vscode.workspace.createFileSystemWatcher(
-    "**/scssVariables.json"
-  );
-  watcher.onDidChange(async () => {
-    const result = await loadScssVariables(); // Reload variables.
-    variablesMap.clear(); // Clear old data.
-    for (const [key, value] of result.variablesMap) {
-      variablesMap.set(key, value);
-    }
-    cssAttributeMap.clear();
-    for (const [key, set] of result.cssAttributeMap) {
-      cssAttributeMap.set(key, set);
-    }
-  });
-  context.subscriptions.push(watcher); // Clean up the watcher later.
+    // Set up a watcher for JSON file changes.
+    logger.info("Setting up JSON file watcher");
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      "**/scssVariables.json"
+    );
+    watcher.onDidChange(async () => {
+      logger.info("JSON file changed, reloading");
+      const result = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Reloading SCSS variables from JSON",
+          cancellable: false,
+        },
+        async () => await loadScssVariables()
+      );
+      variablesMap.clear();
+      for (const [key, value] of result.variablesMap) {
+        variablesMap.set(key, value);
+      }
+      cssAttributeMap.clear();
+      for (const [key, set] of result.cssAttributeMap) {
+        cssAttributeMap.set(key, set);
+      }
+    });
+    context.subscriptions.push(watcher);
+
+    logger.info("Extension activation completed successfully");
+  } catch (err) {
+    logger.error("Extension activation failed", err);
+    vscode.window.showErrorMessage(
+      `SCSS Variables extension failed to activate: ${err}`
+    );
+  }
 }
 
-/** Runs when the extension stops; VS Code handles cleanup. */
+/**
+ * Called when the extension is deactivated (e.g., VS Code closes).
+ * Cleanup is handled by VS Code via subscriptions.
+ */
 export function deactivate(): void {
   // No manual cleanup needed; subscriptions handle it.
 }

@@ -2,127 +2,145 @@
 
 ![SCSS Variables Completion Logo](./images/icon.png)
 
-SCSS Variables Completion is a Visual Studio Code extension that provides intelligent autocompletion for CSS custom properties (CSS variables) in SCSS and CSS files. Define your design tokens in a JSON file and let the extension offer contextual suggestions based on:
+SCSS Variables Completion is a Visual Studio Code extension that enhances your SCSS and CSS workflow with intelligent autocompletion, diagnostics, and hover information for CSS custom properties (variables). Define your design tokens in a JSON file, and the extension provides:
 
-- The CSS property you’re typing (e.g., only show color variables when typing color: var(--).
-- Fuzzy matching of partial variable names after var(-- (even within empty parentheses).
-- Native colour preview: When a token includes a hex color, a color swatch is shown to the left of the variable name (just like Tailwind CSS IntelliSense).
-- Detailed documentation in the suggestions panel, displaying both the token’s value and description.
-- Multi-root workspace capability.
+- **Contextual Suggestions**: Autocomplete based on CSS properties and fuzzy matching of variable names.
+- **Color Previews**: See hex color swatches in the completion dropdown, like Tailwind CSS IntelliSense.
+- **Hover Details**: View descriptions, values, and source info (JSON or local) with clickable links for local definitions.
+- **Diagnostics**: Warnings for undefined variables, unsupported properties, and unused JSON variables.
+- **Deep Scanning**: Finds local variables, mixins, and functions across your workspace.
+- **Multi-Root Support**: Merges tokens from all workspace folders.
 
 ---
 
 ## Features
 
-- **Autocompletion on Demand**:
-When you type `var(--` (or even `var()`, or `var(--)`) in your `.scss`, `.module.scss`, or `.css` file, the extension shows matching design tokens—even if the parentheses are empty. You can also **force suggestions** using `CTRL+SPACE`.
+- **Autocompletion**:
+  - Triggers on `var(--`, `var()`, `var( );`, etc., with fuzzy matching.
+  - Force suggestions with `Ctrl+Space` after `var(`.
+  - Filters by CSS property (e.g., only color variables for `color:`).
+  - Labels variables as `[Design System]` (from JSON) or `[Local]` (from workspace).
 
-- **Property-Based Filtering**:
-Only variables that list the current CSS property in `cssAttributesSupported` are suggested. For example, when typing color: var(--, only tokens supporting the color property appear.
+- **Hover Information**:
+  - Hover over `var(--variable)` to see its description, value, and source.
+  - Clickable links jump to local definitions in SCSS files.
 
-- **Detailed Documentation**:
-Hovering over a suggestion shows a documentation popup that includes the token’s description and its value (pretty-printed JSON), so you know exactly what the token represents.
+- **Diagnostics**:
+  - Warns about undefined variables, unsupported properties, and local variables not in JSON.
+  - Highlights unused JSON variables with exact line numbers in the Problems panel.
 
-- **Multi-Root Support**:
-The extension loads and merges tokens from each workspace folder. If a folder does not have the designated JSON file, the extension will skip it (and log a warning).
+- **Deep Workspace Scanning**:
+  - Scans up to a configurable depth (default 30) for `.scss`, `.module.scss`, and `.css` files.
+  - Suggests local variables, mixins, and functions with file paths.
 
 - **Commands**:
-  - SCSS Variables: Reload Variables – Forces the extension to re-read your JSON files and update the suggestions.
-  - SCSS Variables: Open Variables File – Opens the JSON file from the first workspace folder for quick editing.
+  - `SCSS Variables: Refresh Variables` – Reloads JSON and rescans the workspace.
+  - `SCSS Variables: Open Configuration File` – Opens the JSON file.
+  - `SCSS Variables: Show Variables Overview` – Displays a table of all variables, highlighting local ones not in JSON.
+  - `SCSS Variables: Validate JSON Configuration` – Checks JSON against its schema.
+  - `SCSS Variables: Check Unused JSON Variables` – Reports unused JSON variables.
+
+- **Performance**:
+  - Uses a Trie for fast prefix matching.
+  - Configurable scan paths and depth limits.
+
 - **Debugging**:
-An output channel named "SCSS Variables Completion" logs any errors, JSON parsing issues, or skipped folders.
+  - Logs to the "SCSS Variables" output channel, configurable via `logLevel`.
 
 ---
 
 ## Requirements
 
 - **Visual Studio Code** version 1.83.0 or higher.
-- A **JSON file** containing your design tokens in each folder where you want completions.
+- A **JSON file** (e.g., `scssVariables.json`) with design tokens in your workspace.
 
 ---
 
 ## Installation
 
-1. Install the extension from the VS Code Marketplace.
-2. Ensure you have a file named `scssVariables.json` in your workspace (or configure a custom path in Settings).
+1. Install from the VS Code Marketplace.
+2. Place a `scssVariables.json` file in your workspace root (or configure a custom path in settings).
 
 ---
 
 ## Configuration
 
-This extension contributes these settings under `scssVariables`:
-
-- **`scssVariables.path`**
-  The path (relative to each workspace folder) to the JSON file containing SCSS variable definitions.
-  Default: `"scssVariables.json"`
-
-You can configure this in your **Settings** (File > Preferences > Settings), or by editing your `.vscode/settings.json` manually, for example:
+Configure via `Settings` (File > Preferences > Settings) or `.vscode/settings.json`:
 
 ```jsonc
 {
-  "scssVariables.path": "styles/designTokens.json"
+  "scssVariables.path": "styles/designTokens.json",
+  "scssVariables.logLevel": "debug",
+  "scssVariables.excludedFolders": ["node_modules", "dist"],
+  "scssVariables.scanPaths": ["src/styles", "components/**/*.scss"],
+  "scssVariables.maxScanDepth": 20,
+  "scssVariables.enableDiagnostics": true
 }
 ```
 
-If your workspace has **multiple folders**, each folder can have its own `scssVariables.json` (or custom path). The extension merges any variables it finds.
+- `scssVariables.path`: Path to the JSON file (default: `"scssVariables.json"`).
+- `scssVariables.logLevel`: Logging level (`error`, `warn`, `info`, `debug`; default: `"info"`).
+- `scssVariables.excludedFolders`: Folders to skip during scanning (default: `["node_modules", "dist", "build"]`).
+- `scssVariables.scanPaths`: Specific paths/globs to scan (default: `[]`, scans all).
+- `scssVariables.maxScanDepth`: Max folder depth for scanning (default: `30`).
+- `scssVariables.enableDiagnostics`: Enable/disable diagnostics (default: `true`).
 
 ---
 
 ## JSON File Format
 
-Create your design tokens in JSON. Each key is the variable name **without** the leading `--`. For example:
+Define tokens in a JSON file (e.g., `scssVariables.json`):
 
-```json
+```jsonc
 {
-  "color-primary": {
-    "value": { "light": "#ff0000", "dark": "#00ff00" },
-    "description": "Primary brand color",
-    "cssAttributesSupported": ["color", "background-color"]
+  "fxds-surface-primary-1": {
+    "value": { "dark": "#292e3d", "light": "#ffffff" },
+    "description": "Background/Surface color",
+    "cssAttributesSupported": ["background-color"]
   },
-  "border-radius-lg": {
-    "value": "8px",
-    "description": "Large border radius",
-    "cssAttributesSupported": ["border-radius"]
+  "fxds-text-ancillary": {
+    "value": { "dark": "#525b7a", "light": "#525b7a" },
+    "description": "Ancillary text color",
+    "cssAttributesSupported": ["color", "fill", "background-color"]
   },
-  "border-radius-sm": {
-    "value": {
-      "small": "4px",
-      "medium": "6px",
-      "large": "8px"
-    },
-    "description": "Small border radius",
-    "cssAttributesSupported": ["border-radius"]
+  "fxds-btn-padding-small": {
+    "value": { "small": "0 4px", "medium": "0 8px", "large": "0 12px" },
+    "description": "Button padding (small)",
+    "cssAttributesSupported": [
+      "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+      "margin", "margin-top", "margin-right", "margin-bottom", "margin-left"
+    ]
   }
 }
 ```
 
-## Key Fields
-
-- **`value`** - Can be a string or an object of variants (e.g., "light", "dark" or "small", "medium", "large").
-- **`description`** - A short text describing the token.
-- **`cssAttributesSupported`** - An array of CSS properties where this token should appear in suggestions (e.g., ["color", "border-color"]).
+- `value`: String or object with variants (e.g., themes or sizes).
+- `description`: Describes the token’s purpose.
+- `cssAttributesSupported`: CSS properties where the token applies.
 
 ---
 
 ## Usage
 
-1. Open a `.scss`, `.module.scss`, or `.css` file in VS Code.
-2. Type a CSS property (e.g., color:) and then type `var(--`.
-    - Pressing CTRL+SPACE forces suggestions to appear.
-3. Suggestions are filtered to show only those tokens supporting the CSS property, with fuzzy matching on the token name.
-4. Hover over a suggestion to view detailed documentation (description and token value).
-5. Confirm the suggestion to insert `var(--your-variable-name)` with the correct formatting.
+1. Open a `.scss`, `.module.scss`, or `.css` file.
+2. Type a CSS property (e.g., `color:`) followed by `var(--`.
+3. Use `Ctrl+Space` to force suggestions.
+4. Select a suggestion to insert `var(--variable-name)`.
+5. Hover over a variable to see its details.
+6. Check the Problems panel for diagnostics.
+7. Use `SCSS Variables: Show Variables Overview` to view all tokens.
 
 ---
 
 ## Commands
 
-Open the **Command Palette** (Ctrl+Shift+P on Windows/Linux, Cmd+Shift+P on macOS) and type "SCSS Variables" to see:
+From the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`):
 
-- Open the Command Palette (Ctrl+Shift+P on Windows/Linux, Cmd+Shift+P on macOS) and type "SCSS Variables" to access:
-
-- **SCSS Variables: Reload Variables** – Reloads the design tokens from the JSON file.
-- **SCSS Variables: Open Variables File** – Opens the JSON file for editing
+- **Refresh Variables**: Reloads JSON and rescans the workspace.
+- **Show Variables Overview**: Displays all variables in a table.
+- **Open Configuration File**: Edits the JSON file.
+- **Validate JSON Configuration**: Checks JSON validity.
+- **Check Unused JSON Variables**: Finds unused JSON variables.
 
 ---
 

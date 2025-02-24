@@ -2,7 +2,7 @@
   "name": "scss-variables-completion",
   "displayName": "SCSS Variables Completion",
   "description": "Provides autocompletion, diagnostics, and hover info for SCSS variables from a JSON design system file, with deep workspace scanning",
-  "version": "0.1.90",
+  "version": "0.1.91",
   "publisher": "utk09-NCL",
   "repository": "https://github.com/utk09-NCL/scss-variables-completion",
   "icon": "images/icon.png",
@@ -78,6 +78,16 @@
           "type": "boolean",
           "default": true,
           "description": "Enable diagnostics for undefined variables, unsupported properties, and unused JSON variables"
+        },
+        "scssVariables.showLocalVariableNotifications": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable notifications for new local variables not defined in the JSON file"
+        },
+        "scssVariables.showScanProgress": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress notifications during workspace scans"
         }
       }
     },

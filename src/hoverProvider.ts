@@ -4,8 +4,9 @@ import { ScssVariable } from "./jsonLoader";
 import { LocalDefinition } from "./deepScanner";
 
 /**
- * Registers a hover provider that shows detailed information when hovering over SCSS variables.
+ * Registers a hover provider to show detailed information when hovering over SCSS variables.
  * Displays description, value, and source (JSON or local file), with clickable links for local definitions.
+ * Ensures links are rendered correctly in VS Code’s hover UI.
  *
  * @param variablesMap - A map of SCSS variable names (keys) to their definitions from JSON (values).
  * @param getLocalDefinitions - A function that returns an array of local SCSS definitions found in the workspace.
@@ -15,7 +16,6 @@ export function registerHoverProvider(
   variablesMap: Map<string, ScssVariable>,
   getLocalDefinitions: () => LocalDefinition[]
 ): vscode.Disposable {
-  // Register the hover provider for SCSS and CSS files.
   return vscode.languages.registerHoverProvider(
     [{ language: "scss" }, { language: "css" }],
     {
@@ -78,25 +78,26 @@ export function registerHoverProvider(
             );
             // Show the type (variable, mixin, or function).
             markdown.appendMarkdown(`**Kind:** ${def.kind}\n\n`);
-            // If there’s a value (e.g., "#f00"), display it.
+            // If there’s a value (e.g., "#6c757d"), display it in a code block.
             if (def.value) {
-              markdown.appendMarkdown(`**Value:** \`${def.value}\`\n\n`);
+              markdown.appendMarkdown(
+                `**Value:** \`\`\`css\n${def.value}\n\`\`\`\n\n`
+              );
             }
             // Create a clickable link to jump to the definition file and line.
-            const uri = vscode.Uri.parse(
-              `command:vscode.open?${encodeURIComponent(
-                JSON.stringify([
-                  def.fileUri,
-                  { selection: new vscode.Range(def.line, 0, def.line, 0) },
-                ])
-              )}`
-            );
+            // Use a simpler Markdown link format that VS Code understands.
+            const uri = vscode.Uri.parse(def.fileUri.toString()).with({
+              fragment: `L${def.line + 1}`,
+            });
+            // Format the link as a Markdown URL, ensuring it’s clickable in VS Code.
             markdown.appendMarkdown(
               `**Defined in:** [${def.fileUri.fsPath}:${
                 def.line + 1
               }](${uri})\n\n`
             );
           });
+          // Ensure the Markdown string supports clickable links in VS Code.
+          markdown.supportHtml = true; // Enable HTML support for links.
           // Return the hover info for all local definitions.
           return new vscode.Hover(markdown, range);
         }

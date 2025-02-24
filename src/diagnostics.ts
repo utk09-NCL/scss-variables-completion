@@ -1,13 +1,14 @@
 // src/diagnostics.ts
 import * as vscode from "vscode";
 import { ScssVariable } from "./jsonLoader";
+import { showLocalVariableNotifications } from "./config";
 
 /**
  * Registers diagnostics to warn about SCSS variable issues in the workspace.
  * Checks for:
- * - Variables used but not defined in JSON.
+ * - Variables used but not defined in JSON (from SCSS/CSS files).
  * - Variables used with unsupported CSS properties.
- * - Local variables not in JSON (bidirectional validation).
+ * - Optionally shows notifications for local variables not in JSON if configured.
  *
  * @param variablesMap - A map of JSON-defined variable names to their definitions.
  * @returns A disposable to clean up diagnostics when the extension stops.
@@ -41,11 +42,11 @@ export function registerDiagnostics(
     const localVars = new Set<string>();
     const usedVars = new Set<string>();
 
-    // Find all locally defined CSS variables (e.g., "--my-var: value;").
+    // Collect local definitions (e.g., "--my-var: value;").
     const localVarRegex = /--([\w-]+)\s*:/g;
     let localMatch: RegExpExecArray | null;
     while ((localMatch = localVarRegex.exec(text)) !== null) {
-      localVars.add(localMatch[1]); // Add each local variable name.
+      localVars.add(localMatch[1]);
     }
 
     // Check for variable usage (e.g., "color: var(--my-var)").
@@ -56,10 +57,9 @@ export function registerDiagnostics(
       const varName = match[2]; // The variable name (e.g., "my-var").
       usedVars.add(varName); // Track that this variable was used.
 
-      // Skip if it’s a local variable (no need to check JSON).
       if (localVars.has(varName)) {
         continue;
-      }
+      } // Skip local variables (no JSON check needed).
 
       const variable = variablesMap.get(varName); // Look up in JSON.
       // Calculate the range of the variable name in the text.
@@ -98,36 +98,36 @@ export function registerDiagnostics(
       }
     }
 
-    // Check for local variables not defined in the JSON (bidirectional validation).
-    localVars.forEach((varName) => {
-      if (!variablesMap.has(varName) && usedVars.has(varName)) {
-        // Find where this local variable is defined.
-        const regex = new RegExp(`--${varName}\\s*:`);
-        const match = regex.exec(text);
-        if (match) {
-          const startPos = document.positionAt(match.index);
-          const endPos = document.positionAt(match.index + match[0].length);
-          // Add an info diagnostic for local vars not in JSON.
-          diagnostics.push(
-            new vscode.Diagnostic(
-              new vscode.Range(startPos, endPos),
-              `Local SCSS variable "--${varName}" is used but not defined in the design system JSON.`,
-              vscode.DiagnosticSeverity.Information
-            )
-          );
-          // Show a notification suggesting to add it to JSON.
-          vscode.window.showInformationMessage(
-            `New local variable "--${varName}" found in ${document.uri.fsPath}. Consider adding it to scssVariables.json.`
-          );
+    // Optionally check for and notify about local variables not in JSON, only if enabled.
+    if (showLocalVariableNotifications()) {
+      localVars.forEach((varName) => {
+        if (!variablesMap.has(varName) && usedVars.has(varName)) {
+          // Find where this local variable is defined.
+          const regex = new RegExp(`--${varName}\\s*:`);
+          const match = regex.exec(text);
+          if (match) {
+            const startPos = document.positionAt(match.index);
+            const endPos = document.positionAt(match.index + match[0].length);
+            // Add an info diagnostic for local vars not in JSON.
+            diagnostics.push(
+              new vscode.Diagnostic(
+                new vscode.Range(startPos, endPos),
+                `Local SCSS variable "--${varName}" is used but not defined in the design system JSON.`,
+                vscode.DiagnosticSeverity.Information
+              )
+            );
+            // Show a notification suggesting to add it to JSON.
+            vscode.window.showInformationMessage(
+              `New local variable "--${varName}" found in ${document.uri.fsPath}. Consider adding it to scssVariables.json.`
+            );
+          }
         }
-      }
-    });
+      });
+    }
 
-    // Apply all diagnostics to this file.
     diagnosticCollection.set(document.uri, diagnostics);
   }
 
-  // Set up listeners to update diagnostics when files change or open.
   const subscriptions = [
     vscode.workspace.onDidChangeTextDocument((e) =>
       updateDiagnostics(e.document)

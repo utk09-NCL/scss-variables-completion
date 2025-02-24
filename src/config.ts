@@ -100,7 +100,7 @@ export const createLogger = (outputChannel: vscode.OutputChannel): Logger => {
  */
 export const getExcludedFolders = (): string[] => {
   // Get the configuration settings.
-  const config = vscode.workspace.getConfiguration("scssVariables");
+  const config = getConfig();
   // Return the user-defined excluded folders, or defaults if none are set.
   return config.get<string[]>("excludedFolders", [
     "node_modules",
@@ -112,11 +112,11 @@ export const getExcludedFolders = (): string[] => {
 /**
  * Gets a list of specific paths or glob patterns to scan for SCSS files.
  *
- * @returns An array of paths (e.g., ["src/styles", "components/../*.scss"]), empty means scan all.
+ * @returns An array of paths (e.g., ["src/styles", "components/.../*.scss"]), empty means scan all.
  */
 export const getScanPaths = (): string[] => {
   // Get the configuration settings.
-  const config = vscode.workspace.getConfiguration("scssVariables");
+  const config = getConfig();
   // Return the user-defined scan paths, or an empty array (scan everything) if unset.
   return config.get<string[]>("scanPaths", []);
 };
@@ -124,11 +124,11 @@ export const getScanPaths = (): string[] => {
 /**
  * Gets the maximum folder depth to scan when looking for SCSS files.
  *
- * @returns The maximum depth as a number (default is 30).
+ * @returns The maximum depth as a number (default: 30).
  */
 export const getMaxScanDepth = (): number => {
   // Get the configuration settings.
-  const config = vscode.workspace.getConfiguration("scssVariables");
+  const config = getConfig();
   // Return the user-defined max depth, or 30 if not specified.
   return config.get<number>("maxScanDepth", 30);
 };
@@ -143,4 +143,24 @@ export const getJsonPath = (): string => {
   const config = getConfig();
   // Return the user-defined path, or the default if not set.
   return config.get<string>("path", "scssVariables.json");
+};
+
+/**
+ * Determines if notifications for new local variables should be shown.
+ *
+ * @returns true if notifications are enabled, false otherwise (default: false).
+ */
+export const showLocalVariableNotifications = (): boolean => {
+  const config = getConfig();
+  return config.get<boolean>("showLocalVariableNotifications", false);
+};
+
+/**
+ * Determines if progress notifications for workspace scans should be shown.
+ *
+ * @returns true if progress notifications are enabled, false otherwise (default: true).
+ */
+export const showScanProgress = (): boolean => {
+  const config = getConfig();
+  return config.get<boolean>("showScanProgress", true);
 };

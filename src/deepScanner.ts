@@ -5,6 +5,7 @@ import {
   getScanPaths,
   getMaxScanDepth,
   Logger,
+  showScanProgress,
 } from "./config";
 
 /**
@@ -73,67 +74,100 @@ export class DeepScanner {
     if (this.scanTimer) {
       clearTimeout(this.scanTimer); // Cancel the old timer if it exists.
     }
-    // Set a new timer to scan after the debounce interval.
     this.scanTimer = setTimeout(() => {
-      this.scanWorkspace();
+      this.scanWorkspace(false); // Silent scan for file changes (no progress notification)
     }, this.debounceInterval);
   }
 
   /**
    * Scans the workspace for SCSS/SASS files and finds variables, mixins, and functions.
-   * Shows a progress notification to the user during the scan.
+   * Optionally shows a progress notification based on user settings.
+   *
+   * @param showProgress - Whether to show a progress notification (default: true for initial/manual scans).
    */
-  public async scanWorkspace(): Promise<void> {
-    // Wrap the scan in a progress notification.
-    return vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification, // Show in the notification area.
-        title: "Scanning workspace for SCSS definitions", // Title of the progress bar.
-        cancellable: false, // No cancel button (it’s automatic).
-      },
-      async (progress) => {
-        // Log the start of the scan.
-        this.logger.info(
-          "Starting deep scan of workspace for SCSS definitions"
-        );
-        this.localDefinitions.clear(); // Clear out old definitions.
-        try {
-          // Get user-defined scan paths, or use a default if none are set.
-          const scanPaths = getScanPaths();
-          const includePattern =
-            scanPaths.length > 0
-              ? `{${scanPaths.join(",")}}`
-              : "**/*.{scss,sass}";
-          // Get folders to exclude from the scan.
-          const excludePattern = `{${getExcludedFolders().join(",")}}`;
-          // Find all SCSS/SASS files, respecting the max depth.
-          const files = await vscode.workspace.findFiles(
-            includePattern,
-            excludePattern,
-            this.maxScanDepth
-          );
-          // Update the progress bar with the number of files found.
-          progress.report({ message: `Found ${files.length} files to scan` });
+  public async scanWorkspace(showProgress = true): Promise<void> {
+    const showScanProgressSetting = showScanProgress(); // Get current setting for progress notifications
 
-          // Process each file one by one.
-          for (let i = 0; i < files.length; i++) {
-            const document = await vscode.workspace.openTextDocument(files[i]);
-            this.parseDocument(document); // Look for definitions in the file.
-            // Update progress with the current file count.
-            progress.report({
-              message: `Processed ${i + 1}/${files.length} files`,
+    if (showProgress && showScanProgressSetting) {
+      return vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Scanning workspace for SCSS definitions",
+          cancellable: false,
+        },
+        async (progress) => {
+          // Log the start of the scan.
+          this.logger.info(
+            "Starting deep scan of workspace for SCSS definitions"
+          );
+          this.localDefinitions.clear();
+          try {
+            // Get user-defined scan paths, or use a default if none are set.
+            const scanPaths = getScanPaths();
+            const includePattern =
+              scanPaths.length > 0
+                ? `{${scanPaths.join(",")}}`
+                : "**/*.{scss,sass}";
+            // Get folders to exclude from the scan.
+            const excludePattern = `{${getExcludedFolders().join(",")}}`;
+            const files = await vscode.workspace.findFiles(
+              includePattern,
+              excludePattern,
+              this.maxScanDepth
+            );
+            // Update the progress bar with the number of files found.
+            progress.report({ message: `Found ${files.length} files to scan` });
+
+            for (let i = 0; i < files.length; i++) {
+              const document = await vscode.workspace.openTextDocument(
+                files[i]
+              );
+              this.parseDocument(document); // Look for definitions in the file.
+              // Update progress with the current file count.
+              progress.report({
+                message: `Processed ${i + 1}/${files.length} files`,
+              });
+            }
+            // Log how many definitions were found.
+            this.logger.info("Deep scan completed", {
+              count: this.getLocalDefinitions().length,
             });
+          } catch (err) {
+            // Log any errors that occur during the scan.
+            this.logger.error("Error during deep scan", err);
           }
-          // Log how many definitions were found.
-          this.logger.info("Deep scan completed", {
-            count: this.getLocalDefinitions().length,
-          });
-        } catch (err) {
-          // Log any errors that occur during the scan.
-          this.logger.error("Error during deep scan", err);
         }
+      );
+    } else {
+      // Silent scan (no progress notification)
+      this.logger.info(
+        "Starting silent scan of workspace for SCSS definitions"
+      );
+      this.localDefinitions.clear();
+      try {
+        const scanPaths = getScanPaths();
+        const includePattern =
+          scanPaths.length > 0
+            ? `{${scanPaths.join(",")}}`
+            : "**/*.{scss,sass}";
+        const excludePattern = `{${getExcludedFolders().join(",")}}`;
+        const files = await vscode.workspace.findFiles(
+          includePattern,
+          excludePattern,
+          this.maxScanDepth
+        );
+
+        for (const file of files) {
+          const document = await vscode.workspace.openTextDocument(file);
+          this.parseDocument(document);
+        }
+        this.logger.info("Silent scan completed", {
+          count: this.getLocalDefinitions().length,
+        });
+      } catch (err) {
+        this.logger.error("Error during silent scan", err);
       }
-    );
+    }
   }
 
   /**

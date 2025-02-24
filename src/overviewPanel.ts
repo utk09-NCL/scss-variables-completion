@@ -5,7 +5,7 @@ import { ScssVariable } from "./jsonLoader";
 
 /**
  * Displays a webview panel listing all JSON-defined and local SCSS variables.
- * Highlights local variables not in JSON and adds a "Jump to Definition" button for JSON vars.
+ * Highlights local variables not in JSON and adds a "Jump to Definition" button for both JSON and local vars.
  *
  * @param jsonVariables - Map of variables defined in the JSON file.
  * @param deepScanner - Scanner instance with local definitions from the workspace.
@@ -24,7 +24,7 @@ export function showOverviewPanel(
 
   // Get all local definitions from the scanner.
   const localDefs = deepScanner.getLocalDefinitions();
-  // Create a set of JSON variable names for quick lookup.
+  // Create a set of JSON variable names for quick lookup to highlight missing locals.
   const jsonVarNames = new Set(jsonVariables.keys());
 
   // Build the HTML content for the panel.
@@ -36,8 +36,8 @@ export function showOverviewPanel(
     <style>
       table { width: 100%; border-collapse: collapse; } /* Make tables full-width and tidy */
       th, td { padding: 8px; border: 1px solid #ddd; text-align: left; } /* Style table cells */
-      tr:hover { background-color:rgb(145, 145, 145); cursor: pointer; } /* Highlight rows on hover */
-      .missing { background-color: #ffe6e6; } /* Light red for local vars not in JSON */
+      tr:hover { background-color:rgb(150, 150, 150); cursor: pointer; } /* Highlight rows on hover */
+      .missing { background-color:rgb(95, 66, 190); } /* Light red for local vars not in JSON */
       button { padding: 4px 8px; cursor: pointer; } /* Style the jump button */
     </style>
   </head>
@@ -62,7 +62,7 @@ export function showOverviewPanel(
         <td>[Design System] ${key}</td>
         <td>${variable.description}</td>
         <td><pre>${JSON.stringify(variable.value, null, 2)}</pre></td>
-        <td><button onclick="event.stopPropagation(); openJsonVariable('${key}')">Jump to Definition</button></td>
+        <td><button style="background-color:rgb(39, 57, 174); color:white; border:none; border-radius:4px;" onclick="event.stopPropagation(); openJsonVariable('${key}')">Jump to Definition</button></td>
       </tr>`;
   });
 
@@ -76,14 +76,16 @@ export function showOverviewPanel(
         <tr>
           <th>Name</th>
           <th>Kind</th>
+          <th>Value</th>
           <th>File</th>
           <th>Line</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>
   `;
 
-  // Add each local definition, highlighting ones not in JSON.
+  // Add each local definition, highlighting ones not in JSON, with a jump button.
   localDefs.forEach((def: LocalDefinition) => {
     const isMissing = !jsonVarNames.has(def.name); // Check if it’s missing from JSON.
     html += `
@@ -92,8 +94,12 @@ export function showOverviewPanel(
       }" onclick="openLocalFile('${def.fileUri.toString()}', ${def.line})">
         <td>[Local] ${def.name}</td>
         <td>${def.kind}</td>
+        <td><pre>${def.value || "N/A"}</pre></td>
         <td>${def.fileUri.fsPath}</td>
         <td>${def.line + 1}</td>
+        <td><button onclick="event.stopPropagation(); openLocalFile('${def.fileUri.toString()}', ${
+      def.line
+    })">Jump to Definition</button></td>
       </tr>`;
   });
 

@@ -2,6 +2,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import { Trie } from "./trie";
 
 /**
  * Defines the structure of an SCSS variable as stored in the JSON file.
@@ -25,6 +26,76 @@ type JsonData = {
 };
 
 /**
+ * Data structure for efficient CSS attribute-based variable lookups
+ */
+export class CssAttributeIndex {
+  private attributeMap: CssAttributeMap = new Map();
+  private attributeTries: Map<string, Trie> = new Map();
+
+  /**
+   * Adds a variable to the index for each of its supported CSS attributes
+   *
+   * @param varName - The variable name
+   * @param attributes - List of CSS attributes this variable supports
+   */
+  public addVariable(varName: string, attributes: string[]): void {
+    for (const attr of attributes) {
+      const normalizedAttr = attr.toLowerCase();
+
+      // Create set and trie for this attribute if needed
+      if (!this.attributeMap.has(normalizedAttr)) {
+        this.attributeMap.set(normalizedAttr, new Set());
+        this.attributeTries.set(normalizedAttr, new Trie());
+      }
+
+      // Add to both the set and trie
+      this.attributeMap.get(normalizedAttr)?.add(varName);
+      this.attributeTries.get(normalizedAttr)?.insert(varName);
+    }
+  }
+
+  /**
+   * Gets all variables that support a specific CSS attribute
+   *
+   * @param attribute - The CSS attribute to look up
+   * @returns Set of variable names that support this attribute
+   */
+  public getVariablesForAttribute(attribute: string): Set<string> | undefined {
+    return this.attributeMap.get(attribute.toLowerCase());
+  }
+
+  /**
+   * Gets variables matching a prefix for a specific attribute
+   *
+   * @param attribute - The CSS attribute
+   * @param prefix - Variable name prefix to match
+   * @returns Array of variable names that match the prefix
+   */
+  public findVariablesByPrefix(attribute: string, prefix: string): string[] {
+    const trie = this.attributeTries.get(attribute.toLowerCase());
+    if (!trie) {
+      return [];
+    }
+    return trie.find(prefix);
+  }
+
+  /**
+   * Gets the underlying map for direct access
+   */
+  public getAttributeMap(): CssAttributeMap {
+    return this.attributeMap;
+  }
+
+  /**
+   * Clears all data from the index
+   */
+  public clear(): void {
+    this.attributeMap.clear();
+    this.attributeTries.clear();
+  }
+}
+
+/**
  * Loads SCSS variables from a JSON file specified in the extension settings.
  * Builds two maps: one for variables and one for CSS property support.
  *
@@ -36,7 +107,7 @@ export async function loadScssVariables(): Promise<{
   variablesMap: Map<string, ScssVariable>;
   cssAttributeMap: CssAttributeMap;
 }> {
-  // Get the extension’s settings.
+  // Get the extension's settings.
   const config = vscode.workspace.getConfiguration("scssVariables");
   // Get the JSON file path from settings, defaulting to "scssVariables.json".
   const jsonFilePath: string = config.get("path", "scssVariables.json");
@@ -53,7 +124,8 @@ export async function loadScssVariables(): Promise<{
 
   // Create maps to store the loaded data.
   const variablesMap: Map<string, ScssVariable> = new Map();
-  const cssAttributeMap: CssAttributeMap = new Map();
+  // Use our optimized index instead of just a map
+  const cssAttributeIndex = new CssAttributeIndex();
 
   // Process each workspace folder to find the JSON file.
   for (const folder of workspaceFolders) {
@@ -89,14 +161,8 @@ export async function loadScssVariables(): Promise<{
         // Add the valid variable to the map.
         variablesMap.set(varName, variable);
 
-        // Map each supported CSS property to this variable.
-        for (const attr of variable.cssAttributesSupported) {
-          const normalizedAttr = attr.toLowerCase(); // Standardize to lowercase.
-          if (!cssAttributeMap.has(normalizedAttr)) {
-            cssAttributeMap.set(normalizedAttr, new Set()); // Create a new set if needed.
-          }
-          cssAttributeMap.get(normalizedAttr)?.add(varName); // Add the variable name.
-        }
+        // Add to our optimized index
+        cssAttributeIndex.addVariable(varName, variable.cssAttributesSupported);
       }
     } catch (err) {
       // Handle file read errors (e.g., file missing or no permissions).
@@ -108,17 +174,20 @@ export async function loadScssVariables(): Promise<{
   }
 
   // Return the populated maps.
-  return { variablesMap, cssAttributeMap };
+  return {
+    variablesMap,
+    cssAttributeMap: cssAttributeIndex.getAttributeMap(),
+  };
 }
 
 /**
  * Validates that a variable object from the JSON matches the expected structure.
  *
  * @param variable - The object to check.
- * @returns True if it’s a valid ScssVariable, false otherwise.
+ * @returns True if it's a valid ScssVariable, false otherwise.
  */
 function validateVariable(variable: unknown): variable is ScssVariable {
-  // Check if it’s an object and not null.
+  // Check if it's an object and not null.
   if (!variable || typeof variable !== "object") {
     return false;
   }
@@ -133,4 +202,38 @@ function validateVariable(variable: unknown): variable is ScssVariable {
     Array.isArray(varObj.cssAttributesSupported) &&
     varObj.cssAttributesSupported.every((attr) => typeof attr === "string")
   );
+}
+
+/**
+ * Returns variables that can be used with a specific CSS property.
+ * Uses the cssAttributeMap for fast lookup.
+ *
+ * @param attribute - The CSS property name
+ * @param cssAttributeMap - The map of CSS attributes to variable names
+ * @param variablesMap - The map of all variables
+ * @returns Array of variables that can be used with the specified CSS property
+ */
+export function getVariablesForAttribute(
+  attribute: string,
+  cssAttributeMap: CssAttributeMap,
+  variablesMap: Map<string, ScssVariable>
+): ScssVariable[] {
+  // Check if we have variables for this attribute
+  const varNamesSet = cssAttributeMap.get(attribute.toLowerCase());
+
+  if (!varNamesSet) {
+    return [];
+  }
+
+  // Convert the set of variable names to an array of ScssVariable objects
+  const result: ScssVariable[] = [];
+
+  for (const varName of varNamesSet) {
+    const variable = variablesMap.get(varName);
+    if (variable) {
+      result.push(variable);
+    }
+  }
+
+  return result;
 }

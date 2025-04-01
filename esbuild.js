@@ -20,6 +20,15 @@ const esbuildProblemMatcherPlugin = {
           `    ${location.file}:${location.line}:${location.column}:`
         );
       });
+
+      // Copy schema files on each build in watch mode
+      if (watch) {
+        const schemaSrc = path.join(__dirname, "src", "schema");
+        const schemaDest = path.join(__dirname, "dist", "schema");
+        copyFolderSync(schemaSrc, schemaDest);
+        console.log("[watch] schema files copied");
+      }
+
       console.log("[watch] build finished");
     });
   },

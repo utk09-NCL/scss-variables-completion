@@ -1,31 +1,80 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SCSS Variables Schema",
+  "description": "Schema for SCSS variables definition JSON file used by the SCSS Variables Completion extension",
   "type": "object",
   "patternProperties": {
     "^[\\w-]+$": {
       "type": "object",
       "properties": {
         "value": {
-          "type": "object",
-          "patternProperties": {
-            "^[\\w-]+$": {
-              "type": "string"
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "A single value for this variable"
+            },
+            {
+              "type": "object",
+              "description": "Multiple theme/variant values for this variable",
+              "patternProperties": {
+                "^[\\w-]+$": {
+                  "type": "string",
+                  "description": "Value for a specific theme or variant"
+                }
+              },
+              "additionalProperties": false
             }
-          },
-          "additionalProperties": true
+          ],
+          "description": "The value of the SCSS variable, can be a string or an object with theme variants"
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "A description of what this variable is for"
         },
         "cssAttributesSupported": {
           "type": "array",
+          "description": "CSS properties where this variable can be used",
+          "items": {
+            "type": "string",
+            "description": "A CSS property name"
+          },
+          "minItems": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "color",
+            "spacing",
+            "typography",
+            "elevation",
+            "opacity",
+            "size",
+            "other"
+          ],
+          "description": "The type of design token this variable represents"
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this variable is deprecated and should be avoided in new code",
+          "default": false
+        },
+        "replacedBy": {
+          "type": "string",
+          "description": "If deprecated, the name of the variable that should be used instead"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Additional tags for filtering or categorizing",
           "items": {
             "type": "string"
           }
         }
       },
-      "required": ["value", "description", "cssAttributesSupported"],
+      "required": [
+        "value",
+        "description",
+        "cssAttributesSupported"
+      ],
       "additionalProperties": false
     }
   },

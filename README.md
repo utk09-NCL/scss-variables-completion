@@ -49,6 +49,12 @@ SCSS Variables Completion helps you manage design tokens by providing intelligen
 - Trie-based prefix matching for fast variable lookups
 - Configurable workspace scanning settings
 - Debounced file change handling to prevent excessive re-scanning
+- Batch processing of files to prevent memory issues
+- Parallel scanning for faster processing in large workspaces
+- File system caching for faster subsequent scans
+- Automatic skipping of large files and common build/output directories
+- Configurable batch sizes and delays for optimal performance
+- Comprehensive exclusion patterns for build artifacts and dependencies
 
 ## Installation
 
@@ -69,7 +75,35 @@ Configure through VS Code settings (`settings.json`):
   "scssVariables.maxScanDepth": 30,
   "scssVariables.enableDiagnostics": true,
   "scssVariables.showLocalVariableNotifications": false,
-  "scssVariables.showScanProgress": true
+  "scssVariables.showScanProgress": true,
+  "scssVariables.maxFilesPerBatch": 1000,
+  "scssVariables.batchScanDelay": 100,
+  "scssVariables.enableParallelScanning": true,
+  "scssVariables.maxParallelScans": 4,
+  "scssVariables.enableFileSystemCaching": true,
+  "scssVariables.maxFileSize": 1048576,
+  "scssVariables.additionalExcludePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.git/**",
+    "**/coverage/**",
+    "**/target/**",
+    "**/out/**",
+    "**/bin/**",
+    "**/obj/**",
+    "**/tmp/**",
+    "**/temp/**",
+    "**/vendor/**",
+    "**/venv/**",
+    "**/.env/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/.mvn/**",
+    "**/.gradle/**",
+    "**/.idea/**",
+    "**/.vscode/**"
+  ]
 }
 ```
 
@@ -85,6 +119,13 @@ Configure through VS Code settings (`settings.json`):
 | scssVariables.enableDiagnostics | Enable/disable diagnostic warnings | true |
 | scssVariables.showLocalVariableNotifications | Show notifications for new local variables | false |
 | scssVariables.showScanProgress | Show progress notifications when scanning | true |
+| scssVariables.maxFilesPerBatch | Maximum number of files to process in a single batch | 1000 |
+| scssVariables.batchScanDelay | Delay between batch processing in milliseconds | 100 |
+| scssVariables.enableParallelScanning | Enable parallel file processing | true |
+| scssVariables.maxParallelScans | Maximum number of parallel scan operations | 4 |
+| scssVariables.enableFileSystemCaching | Enable caching of scan results | true |
+| scssVariables.maxFileSize | Maximum file size to scan in bytes (files larger will be skipped) | 1048576 (1MB) |
+| scssVariables.additionalExcludePatterns | Additional glob patterns for excluding files/directories | See default above |
 
 ## JSON Schema
 
@@ -146,8 +187,13 @@ Access these commands from the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
 - Type `var(--` to trigger auto-completion, or use `Ctrl+Space` after `var(`
 - Check the Problems panel for warnings about variable usage
 - Use the Variables Overview panel to see all available variables at a glance
-- Configure excluded folders to improve scanning performance in large projects
+- Configure excluded folders and additionalExcludePatterns to improve scanning performance in large projects
 - Set specific scanPaths to focus on relevant directories
+- Adjust maxFilesPerBatch and batchScanDelay for optimal performance in your workspace
+- Enable parallelScanning for faster processing in large monorepos
+- Use fileSystemCaching to speed up subsequent scans
+- Set maxFileSize to skip processing of large files
+- Monitor scan performance and adjust settings based on your workspace size
 
 ## Troubleshooting
 

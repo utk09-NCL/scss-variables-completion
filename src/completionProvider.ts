@@ -2,205 +2,482 @@
 import * as vscode from "vscode";
 import { ScssVariable } from "./jsonLoader";
 import { LocalDefinition } from "./deepScanner";
+import { getExcludedVariablePatterns, isHtmlSupportEnabled } from "./config";
 import { Trie } from "./trie";
+import { onVariablesRefreshed, RefreshEvent } from "./extension";
 
 /**
- * Registers a completion provider that suggests SCSS variables in CSS/SCSS files.
- * Uses a Trie for fast prefix matching, supports JSON and local variables, and filters by CSS properties.
+ * Manages variable completion for CSS properties, providing smart suggestions for SCSS variables.
  *
- * @param variablesMap - A map of variable names from the JSON file to their details.
- * @param getLocalDefinitions - A function to fetch locally defined variables from the workspace.
- * @returns A disposable object to unregister the provider when the extension stops.
+ * @param variablesMap - Map of design system variables from the JSON file
+ * @param localVariables - Array of locally defined variables found in the workspace scan
+ * @returns A disposable object with the registered completion provider
  */
-export function registerScssCompletionProvider(
+export function registerCompletionProvider(
   variablesMap: Map<string, ScssVariable>,
-  getLocalDefinitions: () => LocalDefinition[]
+  localVariables: LocalDefinition[]
 ): vscode.Disposable {
-  // Create a Trie to store variable names for quick searching.
-  const trie = new Trie();
-  // Add all JSON variable names to the Trie.
-  variablesMap.forEach((_, key) => trie.insert(key));
-  // Add all local variable names to the Trie (updated dynamically later).
-  getLocalDefinitions().forEach((def) => trie.insert(def.name));
+  // Create Trie data structures for efficient lookup and searching
+  const designSystemVariableTrie = new Trie();
+  const localVariableTrie = new Trie();
 
-  // Register the provider for SCSS and CSS files, triggered by "(", "-", or space (for Ctrl+Space).
-  return vscode.languages.registerCompletionItemProvider(
-    [{ language: "scss" }, { language: "css" }],
-    {
-      /**
-       * Provides completion suggestions when the user types in a file.
-       * @param document - The file being edited.
-       * @param position - The cursor’s position in the file.
-       * @returns An array of completion items or undefined if none apply.
-       */
-      provideCompletionItems(
-        document: vscode.TextDocument,
-        position: vscode.Position
-      ): vscode.ProviderResult<vscode.CompletionItem[]> {
-        // Get the current line of text up to the cursor.
-        const lineText: string = document.lineAt(position).text;
-        // Split the line by semicolons to focus on the current CSS rule.
-        const segments = lineText.split(";");
-        const currentSegment = segments[segments.length - 1]; // The last segment is the active one.
+  // Build the tries with variable names
+  function buildTries(): void {
+    // Clear existing tries
+    designSystemVariableTrie.clear();
+    localVariableTrie.clear();
 
-        // Check if "var(" is present in the current segment.
-        const varPos = currentSegment.lastIndexOf("var(");
-        if (varPos === -1) {
-          return [];
-        } // No "var(", so no suggestions.
+    // Rebuild with current variables
+    for (const varName of variablesMap.keys()) {
+      designSystemVariableTrie.insert(varName);
+    }
 
-        // Extract what comes after "var(" to see what the user typed.
-        const afterVarText = currentSegment.substring(varPos + 4);
-        const trimmedAfterVar = afterVarText.replace(/^\s*/, ""); // Remove leading spaces.
-        // Calculate where the typed text starts after "var(".
-        let relativeStart =
-          varPos + 4 + (afterVarText.length - trimmedAfterVar.length);
-        // Skip "--" if already typed to avoid duplication.
-        if (trimmedAfterVar.startsWith("--")) {
-          relativeStart += 2;
+    for (const localVar of localVariables) {
+      localVariableTrie.insert(localVar.name);
+    }
+  }
+
+  // Initial build
+  buildTries();
+
+  // Subscribe to variable refresh events
+  const refreshSubscription = onVariablesRefreshed((event: RefreshEvent) => {
+    // Update our reference to the variables
+    variablesMap = event.variablesMap;
+    localVariables = event.localVariables;
+
+    // Rebuild the tries with updated data
+    buildTries();
+  });
+
+  // Get the excluded variable patterns from settings
+  const excludedPatterns = getExcludedVariablePatterns();
+
+  /**
+   * Checks if a variable should be excluded from completion based on settings
+   *
+   * @param varName - The variable name to check
+   * @returns true if the variable should be excluded, false otherwise
+   */
+  const shouldExcludeVariable = (varName: string): boolean => {
+    for (const pattern of excludedPatterns) {
+      if (typeof pattern === "string") {
+        if (varName.includes(pattern)) {
+          return true;
         }
-
-        // Clean up the typed prefix by removing ")" or ";".
-        const typedPrefix = currentSegment
-          .substring(relativeStart)
-          .replace(/[);]/g, "")
-          .trim();
-
-        // Determine where in the document to insert the suggestion.
-        const segmentAbsoluteStart = lineText.lastIndexOf(currentSegment);
-        const replacementStart = segmentAbsoluteStart + relativeStart;
-        const replacementRange = new vscode.Range(
-          new vscode.Position(position.line, replacementStart),
-          position
-        );
-
-        // Extract the CSS property (e.g., "color" from "color: var(").
-        const propertyMatch = currentSegment.match(/([\w-]+)\s*:\s*var\(/);
-        const cssProperty = propertyMatch ? propertyMatch[1].toLowerCase() : "";
-
-        // Track variables already used in the document to avoid duplicates.
-        const usedVariables: Set<string> = new Set();
-        const usedRegex = /var\(\s*--([\w-]+)\s*\)/g;
-        let usedMatch: RegExpExecArray | null;
-        while ((usedMatch = usedRegex.exec(document.getText())) !== null) {
-          usedVariables.add(usedMatch[1]);
+      } else if (pattern instanceof RegExp) {
+        if (pattern.test(varName)) {
+          return true;
         }
+      }
+    }
+    return false;
+  };
 
-        // Array to hold all completion suggestions.
-        const completions: vscode.CompletionItem[] = [];
-        // Get local definitions from the workspace.
-        const localDefs = getLocalDefinitions();
-        const localMap = new Map<string, LocalDefinition[]>();
-        localDefs.forEach((def) => {
-          if (!localMap.has(def.name)) {
-            localMap.set(def.name, []);
+  // Register the completion provider for SCSS, CSS, and optionally HTML files
+  const supportedLanguages = [
+    { language: "scss", scheme: "file" },
+    { language: "css", scheme: "file" },
+  ];
+
+  // Add HTML support if enabled in settings
+  if (isHtmlSupportEnabled()) {
+    supportedLanguages.push({ language: "html", scheme: "file" });
+  }
+
+  // Register the completion provider with VS Code
+  const completionProviderDisposable =
+    vscode.languages.registerCompletionItemProvider(
+      supportedLanguages,
+      {
+        /**
+         * Provides completion items for variables in CSS properties.
+         *
+         * @param document - The text document where completion was requested
+         * @param position - The position in the document where completion was requested
+         * @param token - A cancellation token
+         * @param context - The completion context
+         * @returns An array of completion items or a completion list
+         */
+        provideCompletionItems(
+          document: vscode.TextDocument,
+          position: vscode.Position,
+          token: vscode.CancellationToken,
+          context: vscode.CompletionContext
+        ): vscode.ProviderResult<
+          vscode.CompletionItem[] | vscode.CompletionList
+        > {
+          const linePrefix = document
+            .lineAt(position)
+            .text.substring(0, position.character);
+
+          // Only provide completions after var(-- or when forcefully triggered
+          const varPrefixPattern = /var\s*\(\s*--\s*([a-zA-Z0-9-_]*)$/;
+          const varStartMatch = linePrefix.match(varPrefixPattern);
+
+          if (
+            !varStartMatch &&
+            context.triggerKind !== vscode.CompletionTriggerKind.Invoke
+          ) {
+            return undefined;
           }
-          localMap.get(def.name)?.push(def); // Group local defs by name.
-        });
 
-        // Use the Trie to find matching variable names based on the prefix.
-        const candidateNames = typedPrefix
-          ? trie.find(typedPrefix)
-          : [...variablesMap.keys(), ...localMap.keys()]; // If no prefix, include all.
+          // Extract the current CSS property if available
+          const cssPropertyPattern = /([a-zA-Z-]+)\s*:\s*[^;]*$/;
+          const propertyMatch = linePrefix.match(cssPropertyPattern);
+          const currentProperty = propertyMatch ? propertyMatch[1] : undefined;
 
-        // Loop through each candidate to create suggestions.
-        for (const varName of candidateNames) {
-          if (usedVariables.has(varName)) {
-            continue;
-          } // Skip already-used variables.
+          // Extract any partial variable name already typed
+          let partialVarName = "";
+          if (varStartMatch && varStartMatch[1]) {
+            partialVarName = varStartMatch[1];
+          }
 
-          // Handle JSON-defined variables (Design System).
-          if (variablesMap.has(varName)) {
-            const variable = variablesMap.get(varName)!;
-            // Filter by CSS property if one is present.
-            if (cssProperty && variable.cssAttributesSupported) {
-              const supported = variable.cssAttributesSupported.some(
-                (attr) => attr.toLowerCase() === cssProperty
-              );
-              if (!supported) {
+          const completionItems: vscode.CompletionItem[] = [];
+
+          // Add design system variables from JSON
+          if (variablesMap.size > 0) {
+            // Use Trie for efficient prefix matching
+            const matchingVarNames = partialVarName
+              ? designSystemVariableTrie.find(partialVarName)
+              : designSystemVariableTrie.getAllWords();
+
+            for (const varName of matchingVarNames) {
+              if (shouldExcludeVariable(varName)) {
+                continue; // Skip excluded variables
+              }
+
+              const variable = variablesMap.get(varName);
+
+              // Skip if variable is undefined (shouldn't happen)
+              if (!variable) {
                 continue;
-              } // Skip if property isn’t supported.
+              }
+
+              // If a specific CSS property is being edited, filter variables that support it
+              if (
+                currentProperty &&
+                variable.cssAttributesSupported &&
+                !variable.cssAttributesSupported.includes(currentProperty)
+              ) {
+                continue;
+              }
+
+              const completionItem = new vscode.CompletionItem(
+                `[Design System] ${varName}`,
+                vscode.CompletionItemKind.Variable
+              );
+
+              // Format the detail text based on variable value structure
+              let detailText: string;
+              if (typeof variable.value === "string") {
+                detailText = `Value: ${variable.value}`;
+              } else {
+                const variants = Object.entries(variable.value);
+                detailText = variants
+                  .map(([theme, value]) => `${theme}: ${value}`)
+                  .join(", ");
+              }
+
+              // Configure completion item display and behavior
+              completionItem.detail = detailText;
+
+              // Add color preview if it's likely a color value
+              if (
+                (typeof variable.value === "string" &&
+                  isColorValue(variable.value)) ||
+                (typeof variable.value === "object" &&
+                  Object.values(variable.value).some((value) =>
+                    isColorValue(String(value))
+                  ))
+              ) {
+                const hexColors: { color: string; variant?: string }[] = [];
+                if (typeof variable.value === "string") {
+                  const segments = (variable.value as string)
+                    .split(",")
+                    .map((s) => s.trim());
+                  segments.forEach((segment) => {
+                    const hexMatch = segment.match(/#[0-9a-fA-F]{3,8}\b/);
+                    if (hexMatch) {
+                      hexColors.push({ color: hexMatch[0] });
+                    }
+                  });
+                } else {
+                  for (const [variant, val] of Object.entries(variable.value)) {
+                    const segments = String(val)
+                      .split(",")
+                      .map((s) => s.trim());
+                    segments.forEach((segment) => {
+                      const hexMatch = segment.match(/#[0-9a-fA-F]{3,8}\b/);
+                      if (hexMatch) {
+                        hexColors.push({ color: hexMatch[0], variant });
+                      }
+                    });
+                  }
+                }
+                // If we found hex colors, add them to the completion item
+                if (hexColors.length > 0) {
+                  // Use CompletionItemKind.Color to show color preview in dropdown
+                  completionItem.kind = vscode.CompletionItemKind.Color;
+
+                  // Set label with prefix and color preview
+                  completionItem.label = `[Design System] ${varName}`;
+                  completionItem.detail = hexColors[0].color; // Show the first color in the label description to trigger the color preview in the dropdown
+
+                  // Create hover documentation with both color previews
+                  const colorMarkdown = new vscode.MarkdownString();
+                  colorMarkdown.supportHtml = true;
+
+                  // Add description in bold
+                  if (variable.description) {
+                    colorMarkdown.appendMarkdown(
+                      `**${variable.description}**\n\n`
+                    );
+                  }
+
+                  // Add values
+                  colorMarkdown.appendMarkdown(`## Values\n\n`);
+                  if (typeof variable.value === "string") {
+                    colorMarkdown.appendMarkdown(`${variable.value}\n\n`);
+                  } else {
+                    for (const [theme, value] of Object.entries(
+                      variable.value
+                    )) {
+                      colorMarkdown.appendMarkdown(
+                        `**${theme}**: ${value}\n\n`
+                      );
+                    }
+                  }
+
+                  // Add color previews
+                  colorMarkdown.appendMarkdown(`## Color Previews\n\n`);
+                  hexColors.forEach(({ color, variant }) => {
+                    const variantText = variant ? `**${variant}**: ` : "";
+                    colorMarkdown.appendMarkdown(
+                      `<span style="display:inline-block;width:24px;height:24px;background:${color};border:1px solid #ccc;margin-right:8px;vertical-align:middle;"></span> ${variantText}${color}\n\n`
+                    );
+                  });
+
+                  // Add CSS attributes supported if available
+                  if (
+                    variable.cssAttributesSupported &&
+                    variable.cssAttributesSupported.length > 0
+                  ) {
+                    colorMarkdown.appendMarkdown(
+                      `## CSS Attributes Supported\n\n`
+                    );
+                    colorMarkdown.appendMarkdown(
+                      variable.cssAttributesSupported.join(", ")
+                    );
+                  }
+
+                  // Set documentation for hover
+                  completionItem.documentation = colorMarkdown;
+                } else {
+                  // No colors, just the label and description
+                  completionItem.label = `[Design System] ${varName}`;
+                  const noColorMarkdown = new vscode.MarkdownString();
+                  if (variable.description) {
+                    noColorMarkdown.appendMarkdown(
+                      `**${variable.description}**\n\n`
+                    );
+                  }
+                  noColorMarkdown.appendMarkdown(`## Values\n\n`);
+                  if (typeof variable.value === "string") {
+                    noColorMarkdown.appendMarkdown(`${variable.value}\n\n`);
+                  } else {
+                    for (const [theme, value] of Object.entries(
+                      variable.value
+                    )) {
+                      noColorMarkdown.appendMarkdown(
+                        `**${theme}**: ${value}\n\n`
+                      );
+                    }
+                  }
+                  if (
+                    variable.cssAttributesSupported &&
+                    variable.cssAttributesSupported.length > 0
+                  ) {
+                    noColorMarkdown.appendMarkdown(
+                      `## CSS Attributes Supported\n\n`
+                    );
+                    noColorMarkdown.appendMarkdown(
+                      variable.cssAttributesSupported.join(", ")
+                    );
+                  }
+                  completionItem.documentation = noColorMarkdown;
+                  completionItem.documentation.supportHtml = true;
+                }
+              } else {
+                // For non-color variables
+                const nonColorMarkdown = new vscode.MarkdownString();
+                if (variable.description) {
+                  nonColorMarkdown.appendMarkdown(
+                    `**${variable.description}**\n\n`
+                  );
+                }
+                nonColorMarkdown.appendMarkdown(`## Values\n\n`);
+                if (typeof variable.value === "string") {
+                  nonColorMarkdown.appendMarkdown(`${variable.value}\n\n`);
+                } else {
+                  for (const [theme, value] of Object.entries(variable.value)) {
+                    nonColorMarkdown.appendMarkdown(
+                      `**${theme}**: ${value}\n\n`
+                    );
+                  }
+                }
+                if (
+                  variable.cssAttributesSupported &&
+                  variable.cssAttributesSupported.length > 0
+                ) {
+                  nonColorMarkdown.appendMarkdown(
+                    `## CSS Attributes Supported\n\n`
+                  );
+                  nonColorMarkdown.appendMarkdown(
+                    variable.cssAttributesSupported.join(", ")
+                  );
+                }
+                completionItem.documentation = nonColorMarkdown;
+                completionItem.documentation.supportHtml = true;
+              }
+
+              // Handle snippets and insertText
+              if (varStartMatch) {
+                // Only add the variable name without var(-- prefix since it's already typed
+                completionItem.insertText = varName;
+                // Set the range to replace only what's after var(--
+                const wordStart = position.with(
+                  undefined,
+                  position.character - (varStartMatch[1]?.length || 0)
+                );
+                const wordEnd = position;
+                completionItem.range = new vscode.Range(wordStart, wordEnd);
+              } else {
+                // Full insertion with var(-- prefix
+                completionItem.insertText = `var(--${varName})`;
+              }
+
+              completionItem.sortText = `a${varName}`; // Sort design system vars first
+              completionItems.push(completionItem);
             }
-            // Create a completion item for this variable.
-            const item = new vscode.CompletionItem(
-              `[Design System] ${varName}`
-            );
-            const colorValue = extractColorValue(variable.value);
-            if (colorValue) {
-              // If it’s a color, show a preview in the dropdown.
-              item.label = {
-                label: `[Design System] ${varName}`,
-                description: colorValue,
-              };
-              item.detail = colorValue;
-              item.kind = vscode.CompletionItemKind.Color;
-            } else {
-              item.kind = vscode.CompletionItemKind.Variable;
-            }
-            // Add detailed documentation in Markdown.
-            const md = new vscode.MarkdownString();
-            md.appendMarkdown(`**Description:** ${variable.description}\n\n`);
-            md.appendMarkdown(
-              `**Value:**\n\`\`\`css\n${JSON.stringify(
-                variable.value,
-                null,
-                2
-              )}\n\`\`\`\n\n`
-            );
-            md.appendMarkdown(`**Source:** Design System (JSON)`);
-            item.documentation = md;
-            item.insertText = `--${varName}`; // What gets inserted.
-            item.range = replacementRange; // Where it goes.
-            item.sortText = "0"; // JSON vars sort first.
-            completions.push(item);
           }
 
-          // Handle locally defined variables.
-          if (localMap.has(varName)) {
-            const defs = localMap.get(varName)!;
-            defs.forEach((def) => {
-              const item = new vscode.CompletionItem(`[Local] ${varName}`);
-              item.kind = vscode.CompletionItemKind.Variable;
-              const md = new vscode.MarkdownString();
-              // Show where it’s defined and its value.
-              md.appendMarkdown(
-                `**Local Definition:**\nDefined in [${
-                  def.fileUri.fsPath
-                }] at line ${def.line + 1}\n\n`
+          // Add local variables from workspace scan
+          if (localVariables.length > 0) {
+            // Use Trie for efficient prefix matching
+            const matchingLocalVars = partialVarName
+              ? localVariableTrie.find(partialVarName)
+              : localVariableTrie.getAllWords();
+
+            for (const localVarName of matchingLocalVars) {
+              if (shouldExcludeVariable(localVarName)) {
+                continue; // Skip excluded variables
+              }
+
+              // Find all definitions for this variable name
+              const definitions = localVariables.filter(
+                (def) => def.name === localVarName
               );
-              md.appendMarkdown(`\`\`\`\n${def.value}\n\`\`\``);
-              item.documentation = md;
-              item.insertText = `--${varName}`;
-              item.range = replacementRange;
-              item.sortText = "1"; // Local vars sort after JSON.
-              completions.push(item);
-            });
+
+              if (definitions.length === 0) {
+                continue;
+              }
+
+              const completionItem = new vscode.CompletionItem(
+                `[Local] ${localVarName}`,
+                vscode.CompletionItemKind.Variable
+              );
+
+              const firstDef = definitions[0];
+
+              // Format location info for documentation
+              const locationInfo =
+                definitions.length === 1
+                  ? `Defined in ${vscode.workspace.asRelativePath(
+                      firstDef.fileUri
+                    )}:${firstDef.line + 1}`
+                  : `${definitions.length} definitions in workspace`;
+
+              completionItem.detail = `Value: ${firstDef.value || "unknown"}`;
+
+              // Create documentation with definition details
+              const docText = new vscode.MarkdownString(
+                `${firstDef.comment || "No description"}\n\n${locationInfo}`
+              );
+
+              // Add color preview if it's a color value
+              if (firstDef.value && isColorValue(firstDef.value)) {
+                const hexColors: { color: string }[] = [];
+                const segments = firstDef.value.split(",").map((s) => s.trim());
+                segments.forEach((segment) => {
+                  const hexMatch = segment.match(/#[0-9a-fA-F]{3,8}\b/);
+                  if (hexMatch) {
+                    hexColors.push({ color: hexMatch[0] });
+                  }
+                });
+
+                if (hexColors.length > 0) {
+                  completionItem.kind = vscode.CompletionItemKind.Color;
+                  // Show the first color in the label description to trigger the color preview in the dropdown
+                  completionItem.label = `[Local] ${localVarName}`;
+                  completionItem.detail = hexColors[0].color;
+                  // Show all colors in the documentation
+                  docText.appendMarkdown(`\n\n## Color Previews\n\n`);
+                  hexColors.forEach(({ color }) => {
+                    docText.appendMarkdown(
+                      `<span style="display:inline-block;width:1em;height:1em;background-color:${color};border:1px solid #ccc;margin-right:4px;"></span> ${color}\n`
+                    );
+                  });
+                  docText.appendMarkdown("\n");
+                  docText.supportHtml = true;
+                }
+              }
+
+              completionItem.documentation = docText;
+
+              // Handle snippets and insertText
+              if (varStartMatch) {
+                // Only add the variable name without var(-- prefix
+                completionItem.insertText = localVarName;
+                // Set the range to replace only what's after var(--
+                const wordStart = position.with(
+                  undefined,
+                  position.character - (varStartMatch[1]?.length || 0)
+                );
+                const wordEnd = position;
+                completionItem.range = new vscode.Range(wordStart, wordEnd);
+              } else {
+                // Full insertion with var(-- prefix
+                completionItem.insertText = `var(--${localVarName})`;
+              }
+
+              completionItem.sortText = `b${localVarName}`; // Sort after design system vars
+              completionItems.push(completionItem);
+            }
           }
-        }
-        return completions; // Return all suggestions to VS Code.
+
+          // Return completion list with items
+          return completionItems;
+        },
       },
-    },
-    "(", // Trigger after "(" in "var(".
-    "-", // Trigger after "-" in "--".
-    " " // Trigger on space (e.g., for Ctrl+Space).
+      "-", // Triggered by hyphen (part of variable names)
+      "(" // Triggered by opening parenthesis (for var())
+    );
+
+  // Create a composite disposable to clean up all resources when unregistered
+  return vscode.Disposable.from(
+    completionProviderDisposable,
+    refreshSubscription
   );
 }
 
 /**
- * Extracts the first hexadecimal color code from a set of CSS values.
- * Used to show color previews in the completion dropdown.
+ * Checks if a value appears to be a color value.
  *
- * @param value - An object with theme keys (e.g., "light") and CSS values (e.g., "#ff0000").
- * @returns The first hex color found, or undefined if none exists.
+ * @param value - The value to check
+ * @returns True if the value appears to be a color value
  */
-function extractColorValue(value: Record<string, string>): string | undefined {
-  // Loop through all values in the object.
-  for (const val of Object.values(value)) {
-    // Look for a 6-digit hex color code (e.g., #FF0000).
-    const hexMatch = val.match(/#[0-9a-fA-F]{6}/);
-    if (hexMatch) {
-      return hexMatch[0];
-    } // Return the first match.
-  }
-  return undefined; // No hex color found.
+function isColorValue(value: string): boolean {
+  // Check for hex colors only (simplified to match requirements)
+  return /#[0-9a-fA-F]{3,8}/.test(value);
 }

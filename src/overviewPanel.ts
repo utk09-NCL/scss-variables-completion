@@ -13,6 +13,7 @@ export class OverviewPanel {
   private disposables: vscode.Disposable[] = [];
   private variables: Map<string, ScssVariable>;
   private localVariables: LocalDefinition[];
+  private readonly extensionUri: vscode.Uri;
 
   /**
    * Creates or reveals the Variables Overview panel.
@@ -69,16 +70,17 @@ export class OverviewPanel {
     panel: vscode.WebviewPanel,
     variables: Map<string, ScssVariable>,
     localVariables: LocalDefinition[],
-    private readonly extensionUri: vscode.Uri
+    extensionUri: vscode.Uri
   ) {
     this.panel = panel;
     this.variables = variables;
     this.localVariables = localVariables;
+    this.extensionUri = extensionUri;
 
     // Update the webview content initially
     this.update();
 
-    // Listen for when the panel is disposed (user closes it)
+    // Listen for when the panel is disposed
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     // Handle messages from the webview
@@ -221,27 +223,28 @@ export class OverviewPanel {
       comment?: string;
       fileUri: string;
       inDesignSystem: boolean;
+      occurrences: number;
     }> = [];
 
-    // Create a map of local variable definitions by name
-    const localVarMap = new Map<string, LocalDefinition[]>();
+    // Process each local variable
+    const seenVariables = new Set<string>();
     for (const localVar of this.localVariables) {
-      if (!localVarMap.has(localVar.name)) {
-        localVarMap.set(localVar.name, []);
-      }
-      localVarMap.get(localVar.name)!.push(localVar);
-    }
+      // Create a unique key for this variable
+      const key = `${localVar.name}-${localVar.fileUri}-${localVar.line}`;
 
-    // Process each unique local variable
-    localVarMap.forEach((defs, name) => {
-      const firstDef = defs[0];
+      // Skip if we've already seen this exact variable
+      if (seenVariables.has(key)) {
+        continue;
+      }
+      seenVariables.add(key);
+
       let valueText: string;
       let colorValue: string | undefined;
 
-      if (firstDef.kind === "map" || firstDef.kind === "list") {
+      if (localVar.kind === "map" || localVar.kind === "list") {
         // Format map/list entries
-        valueText = firstDef.children
-          ? firstDef.children
+        valueText = localVar.children
+          ? localVar.children
               .map((entry) => {
                 if (entry.key) {
                   return `${entry.key}: ${entry.value}`;
@@ -251,41 +254,37 @@ export class OverviewPanel {
               .join("<br>")
           : "Empty";
       } else {
-        valueText = firstDef.value || "";
+        valueText = localVar.value || "No value";
+        // Extract color if present
+        const colorRegex = /#[0-9a-fA-F]{3,8}\b/;
+        const colorMatch = valueText.match(colorRegex);
+        if (colorMatch) {
+          colorValue = colorMatch[0];
+        }
       }
-
-      // Extract color if present
-      const colorRegex = /#[0-9a-fA-F]{3,8}\b/;
-      const colorMatch = valueText.match(colorRegex);
-      if (colorMatch) {
-        colorValue = colorMatch[0];
-      }
-
-      // Check if this variable is also in the design system
-      const inDesignSystem = this.variables.has(name);
 
       localVars.push({
-        name: name,
+        name: localVar.name,
         value: valueText,
-        kind: firstDef.kind,
-        file: vscode.workspace.asRelativePath(firstDef.fileUri),
-        line: firstDef.line,
+        kind: localVar.kind,
+        file: vscode.workspace.asRelativePath(localVar.fileUri),
+        line: localVar.line,
         color: colorValue,
-        comment: firstDef.comment,
-        fileUri: firstDef.fileUri.toString(),
-        inDesignSystem: inDesignSystem,
+        comment: localVar.comment,
+        fileUri: localVar.fileUri.toString(),
+        inDesignSystem: this.variables.has(localVar.name),
+        occurrences: 1,
       });
-    });
+    }
 
-    // Sort variables by name for initial display
+    // Sort variables
     designSystemVars.sort((a, b) => a.name.localeCompare(b.name));
     localVars.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Count unique CSS attribute types
-    const cssAttributeTypes = new Set<string>();
-    designSystemVars.forEach((variable) => {
-      variable.cssAttributes.forEach((attr) => cssAttributeTypes.add(attr));
-    });
+    // Count unique vs total variables
+    const uniqueLocalVars = new Set(this.localVariables.map((v) => v.name))
+      .size;
+    const totalLocalVars = this.localVariables.length;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -430,27 +429,55 @@ export class OverviewPanel {
             background-color: var(--vscode-button-hoverBackground);
         }
         .stats {
-            margin-bottom: 16px;
-            font-size: 0.9em;
-            color: var(--vscode-descriptionForeground);
+            margin: 10px 0;
+            padding: 10px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+        }
+        .stats p {
+            margin: 5px 0;
+            color: var(--vscode-foreground);
         }
         .empty-state {
             text-align: center;
             padding: 40px;
             color: var(--vscode-descriptionForeground);
         }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .logo {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+        }
+        .title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--vscode-editor-foreground);
+        }
     </style>
 </head>
 <body>
-    <h1>SCSS Variables Overview</h1>
+    <div class="header">
+        <img class="logo" src="https://raw.githubusercontent.com/utk09-NCL/scss-variables-completion/b09ba6b0083f338e13f84967ff1db783058596fa/images/icon.png" alt="SCSS Variables Logo">
+        <h1 class="title">SCSS Variables Overview</h1>
+    </div>
+
+    <div class="stats">
+        <p>Design System Variables: ${designSystemVars.length}</p>
+        <p>Local Variables: ${totalLocalVars} (${uniqueLocalVars} unique)</p>
+    </div>
 
     <div class="tabs">
         <div class="tab active" data-tab="design-system">Design System Variables (${
           designSystemVars.length
         })</div>
-        <div class="tab" data-tab="local">Local Variables (${
-          localVars.length
-        })</div>
+        <div class="tab" data-tab="local">Local Variables (${totalLocalVars})</div>
     </div>
 
     <div class="container">
@@ -469,7 +496,9 @@ export class OverviewPanel {
 
                 <select class="filter-select" id="ds-attr-filter">
                     <option value="all">All CSS Properties</option>
-                    ${Array.from(cssAttributeTypes)
+                    ${Array.from(
+                      new Set(designSystemVars.flatMap((v) => v.cssAttributes))
+                    )
                       .sort()
                       .map((attr) => `<option value="${attr}">${attr}</option>`)
                       .join("")}

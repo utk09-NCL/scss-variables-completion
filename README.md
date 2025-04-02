@@ -37,6 +37,10 @@ SCSS Variables Completion helps you manage design tokens by providing intelligen
 - Configurable excluded folders and maximum scan depth
 - Automatic detection of local variables, mixins, and functions
 - File change monitoring with debounced re-scanning
+- Progress notifications during workspace scanning
+- Cancellable scanning operations
+- Batch processing for better performance
+- Parallel scanning support for large workspaces
 
 📊 Variables Overview
 
@@ -55,6 +59,47 @@ SCSS Variables Completion helps you manage design tokens by providing intelligen
 - Automatic skipping of large files and common build/output directories
 - Configurable batch sizes and delays for optimal performance
 - Comprehensive exclusion patterns for build artifacts and dependencies
+
+## Variable Overview Panel
+
+The extension provides a comprehensive overview of all SCSS variables in your workspace through the "SCSS Variables Overview" panel. This panel shows:
+
+- Design System Variables: Variables defined in your design system JSON files
+- Local Variables: Variables found in your SCSS files
+- Variable Statistics: Shows both total and unique variable counts
+- Variable Details: For each variable, you can see:
+  - Name and value
+  - File location
+  - Line number
+  - Color preview (for color variables)
+  - Usage count
+  - Whether it's also defined in the design system
+
+To open the overview panel:
+
+1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+2. Type "SCSS Variables Overview"
+3. Select the command to open the panel
+
+## Variable Counting
+
+The extension tracks two types of variable counts:
+
+1. **Total Variables**: The total number of variable definitions found in your SCSS files
+2. **Unique Variables**: The number of unique variable names (deduplicated by name)
+
+This helps you understand:
+
+- How many times each variable is defined
+- Where variables are being redefined
+- Potential naming conflicts
+- The overall size of your variable system
+
+For example, if you see "Local Variables: 1764 (496 unique)", this means:
+
+- There are 1764 total variable definitions
+- These definitions use 496 unique variable names
+- Some variables are defined multiple times in different files
 
 ## Installation
 
@@ -194,6 +239,8 @@ Access these commands from the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
 - Use fileSystemCaching to speed up subsequent scans
 - Set maxFileSize to skip processing of large files
 - Monitor scan performance and adjust settings based on your workspace size
+- Watch the progress notification during workspace scanning
+- You can cancel a scan in progress if needed
 
 ## Troubleshooting
 
@@ -204,6 +251,12 @@ If you encounter issues:
 3. Adjust the logLevel setting to "debug" for more information
 4. Use the "Refresh Variables" command to force a rescan
 5. Ensure your workspace doesn't exceed the maxScanDepth setting
+6. If scanning is slow, try adjusting the performance settings:
+   - Reduce maxFilesPerBatch if memory usage is high
+   - Increase batchScanDelay if CPU usage is high
+   - Disable parallelScanning if experiencing stability issues
+   - Adjust maxFileSize to skip large files
+   - Add more patterns to additionalExcludePatterns
 
 ## License
 

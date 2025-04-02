@@ -251,96 +251,92 @@ export function isInterpolatedVariablesEnabled(): boolean {
 }
 
 /**
- * Gets the maximum number of files to scan in a single batch.
- * This helps prevent memory issues in large workspaces.
- *
- * @returns The maximum number of files to scan in a batch (default: 1000)
+ * Gets the maximum number of files to process in a single batch.
+ * @returns The maximum number of files per batch
  */
-export const getMaxFilesPerBatch = (): number => {
-  const config = getConfig();
-  return config.get<number>("maxFilesPerBatch", 1000);
-};
+export function getMaxFilesPerBatch(): number {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("maxFilesPerBatch", 1000);
+}
 
 /**
- * Gets the delay between batch scans in milliseconds.
- * This helps prevent CPU spikes in large workspaces.
- *
- * @returns The delay between batch scans in milliseconds (default: 100)
+ * Gets the delay between batch processing in milliseconds.
+ * @returns The delay in milliseconds
  */
-export const getBatchScanDelay = (): number => {
-  const config = getConfig();
-  return config.get<number>("batchScanDelay", 100);
-};
+export function getBatchScanDelay(): number {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("batchScanDelay", 100);
+}
 
 /**
- * Gets whether to use parallel scanning for better performance.
- *
- * @returns true if parallel scanning is enabled (default: true)
+ * Checks if parallel scanning is enabled.
+ * @returns True if parallel scanning is enabled
  */
-export const isParallelScanningEnabled = (): boolean => {
-  const config = getConfig();
-  return config.get<boolean>("enableParallelScanning", true);
-};
+export function isParallelScanningEnabled(): boolean {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("enableParallelScanning", true);
+}
 
 /**
  * Gets the maximum number of parallel scan operations.
- *
- * @returns The maximum number of parallel scans (default: 4)
+ * @returns The maximum number of parallel scans
  */
-export const getMaxParallelScans = (): number => {
-  const config = getConfig();
-  return config.get<number>("maxParallelScans", 4);
-};
+export function getMaxParallelScans(): number {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("maxParallelScans", 4);
+}
 
 /**
- * Gets additional patterns to exclude from scanning.
- * These are in addition to the standard excluded folders.
- *
- * @returns Array of glob patterns to exclude
+ * Checks if file system caching is enabled.
+ * @returns True if file system caching is enabled
  */
-export const getAdditionalExcludePatterns = (): string[] => {
-  const config = getConfig();
-  return config.get<string[]>("additionalExcludePatterns", [
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/.git/**",
-    "**/coverage/**",
-    "**/target/**",
-    "**/out/**",
-    "**/bin/**",
-    "**/obj/**",
-    "**/tmp/**",
-    "**/temp/**",
-    "**/vendor/**",
-    "**/venv/**",
-    "**/.env/**",
-    "**/__pycache__/**",
-    "**/.pytest_cache/**",
-    "**/.mvn/**",
-    "**/.gradle/**",
-    "**/.idea/**",
-    "**/.vscode/**"
-  ]);
-};
-
-/**
- * Gets whether to use file system caching for faster subsequent scans.
- *
- * @returns true if file system caching is enabled (default: true)
- */
-export const isFileSystemCachingEnabled = (): boolean => {
-  const config = getConfig();
-  return config.get<boolean>("enableFileSystemCaching", true);
-};
+export function isFileSystemCachingEnabled(): boolean {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("enableFileSystemCaching", true);
+}
 
 /**
  * Gets the maximum file size to scan in bytes.
- * Files larger than this will be skipped.
- *
- * @returns The maximum file size in bytes (default: 1MB)
+ * @returns The maximum file size in bytes
  */
-export const getMaxFileSize = (): number => {
-  const config = getConfig();
-  return config.get<number>("maxFileSize", 1024 * 1024); // 1MB
-};
+export function getMaxFileSize(): number {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("maxFileSize", 1048576); // 1MB
+}
+
+/**
+ * Gets additional exclude patterns for scanning.
+ * @returns Array of glob patterns to exclude
+ */
+export function getAdditionalExcludePatterns(): string[] {
+  return vscode.workspace
+    .getConfiguration("scssVariables")
+    .get("additionalExcludePatterns", [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.git/**",
+      "**/coverage/**",
+      "**/target/**",
+      "**/out/**",
+      "**/bin/**",
+      "**/obj/**",
+      "**/tmp/**",
+      "**/temp/**",
+      "**/vendor/**",
+      "**/venv/**",
+      "**/.env/**",
+      "**/__pycache__/**",
+      "**/.pytest_cache/**",
+      "**/.mvn/**",
+      "**/.gradle/**",
+      "**/.idea/**",
+      "**/.vscode/**",
+    ]);
+}

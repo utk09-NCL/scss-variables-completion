@@ -4,7 +4,6 @@ import * as path from "path";
 import * as fs from "fs";
 import {
   getExcludedFolders,
-  getScanPaths,
   getMaxScanDepth,
   getDebounceInterval,
   Logger,
@@ -14,7 +13,6 @@ import {
   isParallelScanningEnabled,
   getMaxParallelScans,
   getAdditionalExcludePatterns,
-  isFileSystemCachingEnabled,
   getMaxFileSize,
 } from "./config";
 
@@ -273,94 +271,91 @@ export class DeepScanner implements vscode.Disposable {
 
   /**
    * Scans the entire workspace for SCSS variable definitions.
-   * Shows progress in VS Code UI if enabled in settings.
-   *
-   * @returns A promise that resolves when scanning is complete.
+   * @returns A promise that resolves when scanning is complete
    */
   public async scanWorkspace(): Promise<void> {
-    if (this.scanInProgress) {
-      this.logger.info("Scan already in progress, skipping");
-      return;
-    }
-
-    this.scanInProgress = true;
-    this.logger.info("Starting workspace scan");
-
     try {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders) {
-        this.logger.warn("No workspace folders found");
-        return;
-      }
+      this.scanInProgress = true;
+      this.logger.info("Starting workspace scan...");
 
-      // Clear existing definitions
-      this.localDefinitions = [];
-      this.importCache.clear();
-      this.processedFiles.clear();
+      // Show progress notification
+      const progressOptions: vscode.ProgressOptions = {
+        location: vscode.ProgressLocation.Notification,
+        title: "SCSS Variables: Scanning workspace",
+        cancellable: true,
+      };
 
-      // Process each workspace folder
-      for (const folder of workspaceFolders) {
-        const scanPaths = getScanPaths();
-        const maxFilesPerBatch = getMaxFilesPerBatch();
-        const batchScanDelay = getBatchScanDelay();
-
-        // If specific scan paths are configured, use those
-        if (scanPaths.length > 0) {
-          for (const scanPath of scanPaths) {
-            const fullPath = vscode.Uri.joinPath(folder.uri, scanPath);
-            const files = await this.findScssFiles(fullPath, 0);
-
-            // Process files in batches
-            for (let i = 0; i < files.length; i += maxFilesPerBatch) {
-              const batch = files.slice(i, i + maxFilesPerBatch);
-              await this.processBatch(batch);
-
-              if (i + maxFilesPerBatch < files.length) {
-                await new Promise(resolve => setTimeout(resolve, batchScanDelay));
-              }
-            }
+      await vscode.window.withProgress(
+        progressOptions,
+        async (progress, token) => {
+          // Get all SCSS files in the workspace
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (!workspaceFolders) {
+            this.logger.warn("No workspace folders found");
+            return;
           }
-        } else {
-          // Scan the entire workspace folder
-          const files = await this.findScssFiles(folder.uri, 0);
+
+          const files: vscode.Uri[] = [];
+          for (const folder of workspaceFolders) {
+            const folderFiles = await this.findScssFiles(folder.uri, 0);
+            files.push(...folderFiles);
+          }
+
+          const totalFiles = files.length;
+          let processedFiles = 0;
 
           // Process files in batches
-          for (let i = 0; i < files.length; i += maxFilesPerBatch) {
-            const batch = files.slice(i, i + maxFilesPerBatch);
-            await this.processBatch(batch);
+          const batchSize = getMaxFilesPerBatch();
+          const delay = getBatchScanDelay();
+          const enableParallel = isParallelScanningEnabled();
+          const maxParallel = getMaxParallelScans();
 
-            if (i + maxFilesPerBatch < files.length) {
-              await new Promise(resolve => setTimeout(resolve, batchScanDelay));
+          for (let i = 0; i < files.length; i += batchSize) {
+            if (token.isCancellationRequested) {
+              this.logger.info("Workspace scan cancelled by user");
+              return;
+            }
+
+            const batch = files.slice(i, i + batchSize);
+            processedFiles += batch.length;
+
+            // Update progress
+            progress.report({
+              message: `Processing files ${processedFiles}/${totalFiles}`,
+              increment: (batch.length / totalFiles) * 100,
+            });
+
+            if (enableParallel) {
+              // Process files in parallel with a limit
+              const chunks = this.chunkArray(batch, maxParallel);
+              for (const chunk of chunks) {
+                await Promise.all(
+                  chunk.map((file) => this.scanFile(file, true))
+                );
+              }
+            } else {
+              // Process files sequentially
+              for (const file of batch) {
+                await this.scanFile(file, true);
+              }
+            }
+
+            // Add delay between batches if configured
+            if (delay > 0) {
+              await new Promise((resolve) => setTimeout(resolve, delay));
             }
           }
         }
-      }
+      );
 
-      // Update cache if enabled
-      if (isFileSystemCachingEnabled()) {
-        this.updateCache();
-      }
-
-      this.logger.info(`Scan complete. Found ${this.localDefinitions.length} variables`);
-    } catch (error) {
-      this.logger.error("Error during workspace scan", error);
+      this.logger.info(
+        `Workspace scan complete. Found ${this.localDefinitions.length} variable definitions.`
+      );
+    } catch (e) {
+      this.logger.error(`Error scanning workspace: ${e}`);
+      vscode.window.showErrorMessage(`Error scanning workspace: ${e}`);
     } finally {
       this.scanInProgress = false;
-    }
-  }
-
-  private async processBatch(files: vscode.Uri[]): Promise<void> {
-    if (isParallelScanningEnabled()) {
-      const maxParallel = getMaxParallelScans();
-      const chunks = this.chunkArray(files, maxParallel);
-
-      for (const chunk of chunks) {
-        await Promise.all(chunk.map(file => this.scanFile(file)));
-      }
-    } else {
-      for (const file of files) {
-        await this.scanFile(file);
-      }
     }
   }
 
@@ -391,7 +386,9 @@ export class DeepScanner implements vscode.Disposable {
 
       // Skip if file is too large
       if (stats.type === vscode.FileType.File && stats.size > maxFileSize) {
-        this.logger.debug(`Skipping large file: ${uri.fsPath} (${stats.size} bytes)`);
+        this.logger.debug(
+          `Skipping large file: ${uri.fsPath} (${stats.size} bytes)`
+        );
         return scssFiles;
       }
 
@@ -404,10 +401,14 @@ export class DeepScanner implements vscode.Disposable {
 
         // Check additional exclude patterns
         const relativePath = vscode.workspace.asRelativePath(uri);
-        if (additionalExcludePatterns.some(pattern => {
-          const regex = new RegExp(pattern.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*'));
-          return regex.test(relativePath);
-        })) {
+        if (
+          additionalExcludePatterns.some((pattern) => {
+            const regex = new RegExp(
+              pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")
+            );
+            return regex.test(relativePath);
+          })
+        ) {
           return scssFiles;
         }
 
@@ -438,7 +439,7 @@ export class DeepScanner implements vscode.Disposable {
         }
       } else if (stats.type === vscode.FileType.File) {
         // Check if it's an SCSS file
-        if (uri.fsPath.endsWith('.scss') || uri.fsPath.endsWith('.css')) {
+        if (uri.fsPath.endsWith(".scss") || uri.fsPath.endsWith(".css")) {
           scssFiles.push(uri);
         }
       }
